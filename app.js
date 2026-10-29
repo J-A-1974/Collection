@@ -102,19 +102,19 @@
   async function uploadFile(blob) {
     const ext = { 'image/webp': 'webp', 'image/png': 'png', 'image/svg+xml': 'svg' }[blob.type] || 'jpg';
     const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
-    const { error } = await sb.storage.from('photos').upload(path, blob, { contentType: blob.type, cacheControl: '31536000' });
+    const { error } = await sb.storage.from('collection-photos').upload(path, blob, { contentType: blob.type, cacheControl: '31536000' });
     if (error) throw error;
     return path;
   }
   const removeFiles = (paths) => {
     const list = paths.filter(Boolean);
-    return list.length ? sb.storage.from('photos').remove(list) : null;
+    return list.length ? sb.storage.from('collection-photos').remove(list) : null;
   };
 
   async function signedUrls(paths) {
     const missing = [...new Set(paths.filter((p) => p && !urlCache.has(p)))];
     if (!missing.length) return;
-    const { data, error } = await sb.storage.from('photos').createSignedUrls(missing, 60 * 60 * 24);
+    const { data, error } = await sb.storage.from('collection-photos').createSignedUrls(missing, 60 * 60 * 24);
     if (!error) data.forEach((d) => d.signedUrl && urlCache.set(d.path, d.signedUrl));
   }
 
@@ -134,7 +134,7 @@
   async function saveSettings(patch) {
     const old = { ...settings };
     settings = { ...settings, ...patch, user_id: user.id, updated_at: new Date().toISOString() };
-    const { error } = await sb.from('settings').upsert(settings);
+    const { error } = await sb.from('collection_settings').upsert(settings);
     if (error) { settings = old; throw error; }
     await signedUrls([settings.bg_path, settings.logo_path]);
     applyLook();
@@ -146,16 +146,16 @@
   // ---------- Données ----------
   async function loadAll() {
     const [c, i, s] = await Promise.all([
-      sb.from('categories').select('*').order('position').order('created_at'),
-      sb.from('items').select('*').order('created_at', { ascending: false }),
-      sb.from('settings').select('*').maybeSingle(),
+      sb.from('collection_categories').select('*').order('position').order('created_at'),
+      sb.from('collection_items').select('*').order('created_at', { ascending: false }),
+      sb.from('collection_settings').select('*').maybeSingle(),
     ]);
     if (c.error) throw c.error;
     if (i.error) throw i.error;
     categories = c.data; items = i.data;
     settings = s.data || { theme: 'synthwave' };
     if (!categories.length) {
-      const { data, error } = await sb.from('categories').insert(DEFAULT_CATEGORIES.map((d, n) => ({ ...d, position: n }))).select();
+      const { data, error } = await sb.from('collection_categories').insert(DEFAULT_CATEGORIES.map((d, n) => ({ ...d, position: n }))).select();
       if (error) throw error;
       categories = data;
     }
@@ -285,7 +285,7 @@
     $('#del').onclick = async () => {
       if (!confirm(`Supprimer « ${x.name} » ?`)) return;
       try {
-        const { error } = await sb.from('items').delete().eq('id', x.id);
+        const { error } = await sb.from('collection_items').delete().eq('id', x.id);
         if (error) throw error;
         removeFiles([x.photo_path]);
         items = items.filter((i) => i.id !== x.id);
@@ -358,7 +358,7 @@
       try {
         const oldPath = x?.photo_path;
         if (blob) row.photo_path = await uploadFile(blob);
-        const q = x ? sb.from('items').update(row).eq('id', x.id) : sb.from('items').insert(row);
+        const q = x ? sb.from('collection_items').update(row).eq('id', x.id) : sb.from('collection_items').insert(row);
         const { data, error } = await q.select().single();
         if (error) throw error;
         if (blob && oldPath) removeFiles([oldPath]);
@@ -402,7 +402,7 @@
       try {
         const row = { name, icon, color, shape };
         if (!cat) row.position = categories.length;
-        const q = cat ? sb.from('categories').update(row).eq('id', cat.id) : sb.from('categories').insert(row);
+        const q = cat ? sb.from('collection_categories').update(row).eq('id', cat.id) : sb.from('collection_categories').insert(row);
         const { data, error } = await q.select().single();
         if (error) throw error;
         categories = cat ? categories.map((c) => (c.id === data.id ? data : c)) : [...categories, data];
@@ -429,7 +429,7 @@
       if (!confirm(n ? `Supprimer « ${cat.name} » et ses ${plural(n, 'objet')} ? C’est définitif.` : `Supprimer « ${cat.name} » ?`)) return;
       try {
         const photos = items.filter((x) => x.category_id === cat.id).map((x) => x.photo_path);
-        const { error } = await sb.from('categories').delete().eq('id', cat.id);
+        const { error } = await sb.from('collection_categories').delete().eq('id', cat.id);
         if (error) throw error;
         removeFiles(photos);
         categories = categories.filter((c) => c.id !== cat.id);
