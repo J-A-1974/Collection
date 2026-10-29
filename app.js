@@ -22,6 +22,7 @@
     ['memphis', 'Années 90'], ['gameboy', 'Game Boy'], ['photo', 'Ma photo'],
   ];
   const OWNERS = ['Papa', 'Maman', 'Anaïs', 'Elodie'];
+  const PLACES = ['Normandie', 'Montgeron'];
   const PLATFORMS = ['PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita', 'Nintendo Switch', 'Wii U', 'Wii', 'GameCube', 'Nintendo 64',
     'Super Nintendo', 'NES', 'Nintendo DS', 'Nintendo 3DS', 'Game Boy', 'Game Boy Advance', 'Xbox Series', 'Xbox One', 'Xbox 360', 'Xbox',
     'Master System', 'Mega Drive', 'Saturn', 'Dreamcast', 'Neo Geo', 'Atari 2600', 'PC'];
@@ -194,7 +195,7 @@
   function itemCard(x) {
     const cat = categories.find((c) => c.id === x.category_id) || {};
     const url = x.photo_path && urlCache.get(x.photo_path);
-    const sub = [x.platform || x.brand, x.year, x.owner].filter(Boolean).join(' · ');
+    const sub = [x.platform || x.brand, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     return `<a class="card shape-${esc(cat.shape || 'classique')}" href="#/i/${x.id}">
       ${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
@@ -272,9 +273,10 @@
         ${field('Marque', x.brand)}
         ${field('Année', x.year)}
         ${field('Tarif', money(x.estimated_value))}
+        ${field('Lieu', x.location)}
+        ${field('Obtenu le', x.acquired_on && new Date(x.acquired_on + 'T12:00').toLocaleDateString('fr-FR'))}
         ${field('État', x.condition)}
         ${field('Prix d’achat', money(x.purchase_price))}
-        ${field('Emplacement', x.location, true)}
         ${field('Notes', x.notes, true)}
       </div>
       <div class="actions">
@@ -321,12 +323,15 @@
         </div>
         <label>Propriétaire</label>
         <select name="owner"><option value="">Choisir…</option>${OWNERS.map((o) => `<option ${o === x?.owner ? 'selected' : ''}>${o}</option>`).join('')}</select>
-        <details ${x?.condition || x?.purchase_price || x?.location || x?.notes ? 'open' : ''}><summary>Plus de détails (facultatif)</summary>
+        <div class="row">
+          <div><label>Lieu</label><select name="location"><option value="">Choisir…</option>${[...new Set([...PLACES, ...(x?.location ? [x.location] : [])])].map((o) => `<option ${o === x?.location ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>
+          <div><label>Obtenu le</label><input name="acquired_on" type="date" value="${esc(x?.acquired_on)}"></div>
+        </div>
+        <details ${x?.condition || x?.purchase_price || x?.notes ? 'open' : ''}><summary>Plus de détails (facultatif)</summary>
           <div class="row">
             <div><label>État</label><select name="condition"><option value=""></option>${CONDITIONS.map((c) => `<option ${c === x?.condition ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
             <div><label>Prix d’achat (€)</label><input name="purchase_price" inputmode="decimal" value="${esc(x?.purchase_price)}"></div>
           </div>
-          <label>Emplacement à la maison</label><input name="location" value="${esc(x?.location)}" placeholder="Ex. : Bureau, étagère du haut">
           <label>Notes</label><textarea name="notes" rows="3">${esc(x?.notes)}</textarea>
         </details>
         <div class="actions"><button type="button" class="btn" id="cancel">Annuler</button><button class="btn primary" id="save">Enregistrer</button></div>
@@ -352,7 +357,7 @@
         platform: fd.platform.trim() || null, brand: fd.brand.trim() || null,
         year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: fd.owner || null,
         condition: fd.condition || null, purchase_price: numOrNull(fd.purchase_price),
-        location: fd.location.trim() || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
+        location: fd.location || null, acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
       };
       $('#save').disabled = true; $('#save').textContent = 'Enregistrement…';
       try {

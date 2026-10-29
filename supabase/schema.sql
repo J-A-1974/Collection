@@ -25,6 +25,7 @@ create table if not exists public.collection_items (
   purchase_price numeric(10,2),
   estimated_value numeric(10,2),
   location text,
+  acquired_on date,
   notes text,
   photo_path text,
   created_at timestamptz not null default now(),
@@ -92,3 +93,6 @@ drop policy if exists "collection_photos_owner_delete" on storage.objects;
 create policy "collection_photos_owner_delete" on storage.objects
   for delete to authenticated
   using (bucket_id = 'collection-photos' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- Ajouts après la première version
+alter table public.collection_items add column if not exists acquired_on date;
