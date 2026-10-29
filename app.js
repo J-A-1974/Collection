@@ -573,9 +573,11 @@
   window.addEventListener('hashchange', route);
 
   applyLook();
+  let started = false;
   sb.auth.onAuthStateChange((_event, session) => {
     const newUser = session?.user || null;
-    if (newUser?.id === user?.id) return;
+    if (started && newUser?.id === user?.id) return;
+    started = true;
     user = newUser;
     // Laisse Supabase finir son travail avant de charger les données
     setTimeout(async () => {
