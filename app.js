@@ -16,11 +16,22 @@
   const SHAPES = [
     ['classique', 'Classique'], ['cartouche', 'Cartouche'], ['ecran', 'Télé'], ['maillot', 'Maillot'],
     ['ballon', 'Ballon'], ['blister', 'Blister'], ['ticket', 'Ticket'], ['bouton', 'Bouton'],
+    ['appli', 'Appli'], ['hexagone', 'Hexagone'], ['octogone', 'Octogone'], ['ecusson', 'Écusson'],
+    ['pilule', 'Pilule'], ['etoile', 'Étoile'], ['feuille', 'Feuille'], ['losange', 'Losange'],
   ];
   const THEMES = [
-    ['synthwave', 'Synthwave 80'], ['arcade', 'Arcade'], ['heroique', 'Héroïque'],
-    ['memphis', 'Années 90'], ['gameboy', 'Game Boy'], ['photo', 'Ma photo'],
+    ['synthwave', 'Synthwave 80', 'Rétro'], ['arcade', 'Arcade', 'Rétro'], ['heroique', 'Héroïque', 'Rétro'],
+    ['memphis', 'Années 90', 'Rétro'], ['gameboy', 'Game Boy', 'Rétro'],
+    ['confettis', 'Confettis', 'Fun et coloré'], ['bonbons', 'Bonbons', 'Fun et coloré'], ['arcenciel', 'Arc-en-ciel', 'Fun et coloré'],
+    ['tropical', 'Tropical', 'Fun et coloré'], ['popart', 'Pop art', 'Fun et coloré'],
+    ['blanc', 'Blanc pur', 'Clair et épuré'], ['nuage', 'Nuage', 'Clair et épuré'], ['pastel', 'Pastel', 'Clair et épuré'], ['sable', 'Sable', 'Clair et épuré'],
+    ['aurore', 'Aurore', 'Moderne'], ['graphite', 'Graphite', 'Moderne'], ['ocean', 'Océan', 'Moderne'], ['verre', 'Verre', 'Moderne'],
+    ['photo', 'Ma photo', 'Personnel'],
   ];
+  const LIGHT_THEMES = ['confettis', 'bonbons', 'popart', 'blanc', 'nuage', 'pastel', 'sable', 'verre'];
+  // Taille des cartes, retenue sur ce téléphone
+  let cardSize = 'grand';
+  try { cardSize = localStorage.getItem('cardSize') || 'grand'; } catch {}
   const OWNERS = ['Papa', 'Maman', 'Anaïs', 'Elodie'];
   const PLACES = ['Normandie', 'Montgeron'];
   // Sous-cartes proposées d'office dans « Jeux vidéo » et « Consoles »
@@ -166,7 +177,9 @@
 
   // ---------- Apparence ----------
   function applyLook() {
-    document.body.className = `theme-${settings.theme || 'synthwave'}`;
+    const t = settings.theme || 'synthwave';
+    document.body.className = `theme-${t}${LIGHT_THEMES.includes(t) ? ' light' : ''}${cardSize === 'petit' ? ' cards-small' : ''}`;
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', LIGHT_THEMES.includes(t) ? '#ffffff' : '#0f0a1f');
     const bg = $('#bg');
     const bgUrl = settings.theme === 'photo' && settings.bg_path && urlCache.get(settings.bg_path);
     bg.style.backgroundImage = bgUrl ? `url('${bgUrl}')` : '';
@@ -342,7 +355,7 @@
       const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
       const bg = img ? `background:#fff url('${esc(img)}') center / contain no-repeat` : `background:linear-gradient(160deg, ${color}, ${shade(color)})`;
       return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, g)}">
-        <div class="face" style="${bg}"><span class="tag" style="font-size:${size}rem">${esc(label)}</span></div>
+        <div class="face" style="${bg}"><span class="tag" style="--fs:${size}">${esc(label)}</span></div>
         <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
     };
     const draw = () => {
@@ -553,7 +566,7 @@
         ${hasImg ? '<button class="btn" id="gReset">Enlever l’image de cette carte</button>' : ''}
         <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">` : ''}
         <button class="btn" id="editCat">✏️ Nom, forme, icône, couleur</button>
-        <button class="btn" id="look">🎨 Fond d’écran et logo</button>
+        <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
         <button class="btn danger" id="delCat">Supprimer la catégorie${n ? ` et ses ${plural(n, 'objet')}` : ''}</button>
         <button class="btn" id="cancel">Fermer</button>
       </div>`);
@@ -600,7 +613,7 @@
   function mainMenu() {
     openModal(`<h3>Menu</h3>
       <div class="stack">
-        <button class="btn" id="look">🎨 Fond d’écran et logo</button>
+        <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
         <button class="btn" id="newCat">➕ Nouvelle catégorie</button>
         <p class="hint">Connecté : ${esc(user.email)}</p>
         <button class="btn danger" id="logout">Se déconnecter</button>
@@ -614,10 +627,15 @@
 
   function lookMenu() {
     const logoUrl = settings.logo_path ? urlCache.get(settings.logo_path) : settings.logo_url;
-    openModal(`<h3>Fond d’écran et logo</h3>
-      <div class="lbl">Fond d’écran</div>
-      <div class="themes">${THEMES.map(([k, l]) => `<button type="button" data-t="${k}" class="theme-${k} ${settings.theme === k ? 'on' : ''}">
-        <div class="mini-bg" id="mini-${k}" style="background-size:cover"></div><span>${l}</span></button>`).join('')}</div>
+    openModal(`<h3>Apparence</h3>
+      <div class="lbl">Taille des cartes</div>
+      <div class="sizes">
+        <button type="button" data-size="grand" class="${cardSize === 'grand' ? 'on' : ''}"><span class="ico">▢▢</span>Grandes<br><small>2 par ligne</small></button>
+        <button type="button" data-size="petit" class="${cardSize === 'petit' ? 'on' : ''}"><span class="ico">▫▫▫</span>Petites<br><small>3 par ligne</small></button>
+      </div>
+      ${[...new Set(THEMES.map((t) => t[2]))].map((grp) => `<div class="lbl">${grp}</div>
+      <div class="themes">${THEMES.filter((t) => t[2] === grp).map(([k, l]) => `<button type="button" data-t="${k}" class="theme-${k} ${settings.theme === k ? 'on' : ''}">
+        <div class="mini-bg" id="mini-${k}" style="background-size:cover"></div><span>${l}</span></button>`).join('')}</div>`).join('')}
       <label class="btn file-btn" style="margin-top:10px">📷 Mettre ma propre photo en fond<input type="file" accept="image/*" id="bgFile"></label>
 
       <h4>Logo en haut de l’écran</h4>
@@ -631,10 +649,16 @@
     const bgUrl = settings.bg_path && urlCache.get(settings.bg_path);
     if (bgUrl) $('#mini-photo').style.backgroundImage = `url('${bgUrl}')`;
     $('#cancel').onclick = closeModal;
+    modalBody.querySelectorAll('[data-size]').forEach((b) => (b.onclick = () => {
+      cardSize = b.dataset.size;
+      try { localStorage.setItem('cardSize', cardSize); } catch {}
+      applyLook();
+      modalBody.querySelectorAll('[data-size]').forEach((o) => o.classList.toggle('on', o === b));
+    }));
     modalBody.querySelectorAll('[data-t]').forEach((b) => (b.onclick = async () => {
       const t = b.dataset.t;
       if (t === 'photo' && !settings.bg_path) return $('#bgFile').click();
-      try { await saveSettings({ theme: t }); lookMenu(); } catch (e) { fail(e); }
+      try { const y = modalBody.scrollTop; await saveSettings({ theme: t }); lookMenu(); modalBody.scrollTop = y; } catch (e) { fail(e); }
     }));
     $('#bgFile').onchange = async (e) => {
       const file = e.target.files[0];
