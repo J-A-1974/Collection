@@ -26,8 +26,43 @@
   const PLATFORMS = ['PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita', 'Nintendo Switch', 'Wii U', 'Wii', 'GameCube', 'Nintendo 64',
     'Super Nintendo', 'NES', 'Nintendo DS', 'Nintendo 3DS', 'Game Boy', 'Game Boy Advance', 'Xbox Series', 'Xbox One', 'Xbox 360', 'Xbox',
     'Master System', 'Mega Drive', 'Saturn', 'Dreamcast', 'Neo Geo', 'Atari 2600', 'PC'];
-  const BRANDS = ['Nintendo', 'Sony', 'Microsoft', 'Sega', 'Atari', 'SNK', 'Ubisoft', 'EA', 'Activision', 'Square Enix', 'Capcom', 'Konami',
-    'Bandai Namco', 'Mattel', 'Hasbro', 'Lego', 'Playmobil', 'Kenner', 'Adidas', 'Nike', 'Puma'];
+  const BRANDS = {
+    jeux: ['Nintendo', 'Sony', 'Microsoft', 'Sega', 'Atari', 'SNK', 'Ubisoft', 'Electronic Arts', 'Activision', 'Square Enix', 'Capcom', 'Konami', 'Bandai Namco', 'Rockstar', 'Bethesda'],
+    jouets: ['Playmobil', 'Lego', 'Mattel', 'Hasbro', 'Kenner', 'Bandai', 'Hot Wheels', 'Majorette', 'Corolle', 'Smoby', 'VTech', 'Ravensburger', 'Asmodee', 'Dujardin', 'Panini'],
+    sport: ['Adidas', 'Nike', 'Puma', 'Kappa', 'Le Coq Sportif', 'Umbro', 'Macron', 'New Balance', 'Kipsta', 'Mitre', 'Select'],
+  };
+  // Type de catégorie, d'après son nom, pour proposer les bons champs et les bonnes marques
+  function kindOf(cat) {
+    const n = (cat?.name || '').toLowerCase();
+    if (/jeux?\s*vid|vid[ée]o/.test(n)) return 'jeux';
+    if (/console/.test(n)) return 'consoles';
+    if (/maillot|ballon|foot|sport|crampon|basket/.test(n)) return 'sport';
+    if (/jouet|playmo|lego|figurine|poup|peluche|carte|jeu|voiture|maquette/.test(n)) return 'jouets';
+    return 'autre';
+  }
+  function brandsFor(kind) {
+    if (kind === 'jeux' || kind === 'consoles') return BRANDS.jeux;
+    if (BRANDS[kind]) return BRANDS[kind];
+    return [...BRANDS.jeux, ...BRANDS.jouets, ...BRANDS.sport].sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+  // Menu déroulant avec « Autre… » qui ouvre une case pour écrire soi-même
+  function selectOther(name, options, value, placeholder) {
+    const list = value && !options.includes(value) ? [value, ...options] : options;
+    return `<select name="${name}" data-other="${name}"><option value="">Choisir…</option>
+      ${list.map((o) => `<option ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+      <option value="__autre">✏️ Autre…</option></select>
+      <input name="${name}__autre" placeholder="${esc(placeholder)}" hidden style="margin-top:6px">`;
+  }
+  function wireOther(root) {
+    root.querySelectorAll('select[data-other]').forEach((sel) => {
+      sel.onchange = () => {
+        const input = root.querySelector(`[name="${sel.dataset.other}__autre"]`);
+        input.hidden = sel.value !== '__autre';
+        if (!input.hidden) input.focus();
+      };
+    });
+  }
+  const otherValue = (fd, name) => (fd[name] === '__autre' ? (fd[name + '__autre'] || '').trim() : fd[name]) || null;
   const CONDITIONS = ['Neuf (sous blister)', 'Très bon', 'Bon', 'Moyen', 'Abîmé'];
   const EMOJIS = ['🎮', '🕹️', '👾', '🧸', '🦸', '🤖', '👕', '⚽', '🏀', '🎧', '🃏', '📀', '💿', '📼', '📚', '🚗', '🧩', '🏆', '🎲', '⌚', '👟', '🧢', '⚔️', '📦', '⭐'];
   const COLORS = ['#6366f1', '#ec4899', '#10b981', '#8b5cf6', '#f59e0b', '#0ea5e9', '#ef4444', '#14b8a6', '#64748b', '#ff3d9a', '#29e6ff', '#7cff6b'];
@@ -180,15 +215,11 @@
     const f = (v) => Math.max(0, Math.round(v * 0.45));
     return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
   }
-  const coverFor = (cat) => {
-    const x = items.find((i) => i.category_id === cat.id && i.photo_path && urlCache.get(i.photo_path));
-    return x ? urlCache.get(x.photo_path) : null;
-  };
 
   function categoryCard(c) {
     const n = items.filter((x) => x.category_id === c.id).length;
     return `<a class="card shape-${esc(c.shape || 'classique')}" href="#/c/${c.id}">
-      ${faceHtml(c.shape, c.color, coverFor(c), c.icon)}
+      ${faceHtml(c.shape, c.color, null, c.icon)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
   }
 
@@ -311,12 +342,7 @@
         <label>Nom *</label><input name="name" required value="${esc(x?.name)}" placeholder="Ex. : Super Mario 64">
         <label>Catégorie</label>
         <select name="category_id">${categories.map((c) => `<option value="${c.id}" ${c.id === catId ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
-        <div class="row">
-          <div><label>Console</label><input name="platform" list="platforms" value="${esc(x?.platform)}" placeholder="Ex. : PS5"></div>
-          <div><label>Marque</label><input name="brand" list="brands" value="${esc(x?.brand)}" placeholder="Ex. : Nintendo"></div>
-        </div>
-        <datalist id="platforms">${PLATFORMS.map((p) => `<option value="${p}">`).join('')}</datalist>
-        <datalist id="brands">${BRANDS.map((p) => `<option value="${p}">`).join('')}</datalist>
+        <div class="row" id="dyn"></div>
         <div class="row">
           <div><label>Année</label><input name="year" inputmode="numeric" value="${esc(x?.year)}" placeholder="Ex. : 1996"></div>
           <div><label>Tarif (€)</label><input name="estimated_value" inputmode="decimal" value="${esc(x?.estimated_value)}" placeholder="Ex. : 25"></div>
@@ -337,6 +363,21 @@
         <div class="actions"><button type="button" class="btn" id="cancel">Annuler</button><button class="btn primary" id="save">Enregistrer</button></div>
       </form>`);
     let blob = null;
+    // Champs qui dépendent de la catégorie : « Console » seulement pour les jeux vidéo, marques adaptées
+    const drawDyn = () => {
+      const cat = categories.find((c) => c.id === $('[name=category_id]').value);
+      const kind = kindOf(cat);
+      const prev = $('#dyn').innerHTML ? Object.fromEntries(new FormData($('#f'))) : null;
+      const platform = prev ? otherValue(prev, 'platform') : x?.platform;
+      const brand = prev ? otherValue(prev, 'brand') : x?.brand;
+      const showPlatform = kind === 'jeux' || platform;
+      $('#dyn').innerHTML = `
+        ${showPlatform ? `<div><label>Console</label>${selectOther('platform', PLATFORMS, platform, 'Nom de la console')}</div>` : ''}
+        <div><label>Marque</label>${selectOther('brand', brandsFor(kind), brand, 'Nom de la marque')}</div>`;
+      wireOther($('#dyn'));
+    };
+    drawDyn();
+    $('[name=category_id]').onchange = drawDyn;
     $('#cancel').onclick = closeModal;
     $('#photo').onchange = async (e) => {
       const file = e.target.files[0];
@@ -354,7 +395,7 @@
       const fd = Object.fromEntries(new FormData(e.target));
       const row = {
         name: fd.name.trim(), category_id: fd.category_id,
-        platform: fd.platform.trim() || null, brand: fd.brand.trim() || null,
+        platform: otherValue(fd, 'platform'), brand: otherValue(fd, 'brand'),
         year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: fd.owner || null,
         condition: fd.condition || null, purchase_price: numOrNull(fd.purchase_price),
         location: fd.location || null, acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
