@@ -222,3 +222,11 @@ details summary { color: var(--accent); cursor: pointer; padding: 6px 0; }
 .card.sub .label { padding-top: 6px; }
 .card.empty-group .face { filter: saturate(.6) brightness(.85); }
 .card.empty-group .label span { opacity: .7; }
+
+/* Quantité */
+.face-wrap { position: relative; }
+.qty { position: absolute; top: 10px; right: 6px; z-index: 2; background: var(--accent); color: #200f00; font-family: var(--display); font-size: .85rem;
+  padding: 2px 8px; border-radius: 99px; box-shadow: 0 2px 0 #7a3c00; }
+.stepper { display: flex; gap: 6px; }
+.stepper input { text-align: center; min-width: 0; }
+.stepper button { flex: 0 0 44px; border-radius: 10px; border: 1px solid var(--surface-2); background: var(--surface-2); color: var(--text); font-size: 1.4rem; cursor: pointer; }

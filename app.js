@@ -64,6 +64,14 @@
       };
     });
   }
+  const qty = (x) => Math.max(1, Number(x.quantity) || 1);
+  const countOf = (list) => list.reduce((s, x) => s + qty(x), 0);
+  const valueOf = (list) => list.reduce((s, x) => s + (Number(x.estimated_value) || 0) * qty(x), 0);
+  // Liste d'un menu : valeurs d'origine + toutes celles déjà enregistrées sur des objets
+  const withUsed = (base, field) => {
+    const extra = [...new Set(items.map((i) => i[field]).filter(Boolean))].filter((v) => !base.includes(v)).sort((a, b) => a.localeCompare(b, 'fr'));
+    return [...base, ...extra];
+  };
   const otherValue = (fd, name) => (fd[name] === '__autre' ? (fd[name + '__autre'] || '').trim() : fd[name]) || null;
   const CONDITIONS = ['Neuf (sous blister)', 'Très bon', 'Bon', 'Moyen', 'Abîmé'];
   const EMOJIS = ['🎮', '🕹️', '👾', '🧸', '🦸', '🤖', '👕', '⚽', '🏀', '🎧', '🃏', '📀', '💿', '📼', '📚', '🚗', '🧩', '🏆', '🎲', '⌚', '👟', '🧢', '⚔️', '📦', '⭐'];
@@ -256,7 +264,7 @@
   }
 
   function categoryCard(c) {
-    const n = items.filter((x) => x.category_id === c.id).length;
+    const n = countOf(items.filter((x) => x.category_id === c.id));
     return `<a class="card shape-${esc(c.shape || 'classique')}" href="#/c/${c.id}">
       ${faceHtml(c.shape, c.color, null, c.icon)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
@@ -267,7 +275,7 @@
     const url = x.photo_path && urlCache.get(x.photo_path);
     const sub = [x.platform || x.brand, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     return `<a class="card shape-${esc(cat.shape || 'classique')}" href="#/i/${x.id}">
-      ${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}
+      <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
 
@@ -275,10 +283,10 @@
     setHeader();
     fab.onclick = () => itemForm();
     menuBtn.onclick = mainMenu;
-    const total = items.reduce((s, x) => s + (Number(x.estimated_value) || 0), 0);
+    const total = valueOf(items);
     app.innerHTML = `
       <div class="summary">
-        <div><b>${items.length}</b><span>objets</span></div>
+        <div><b>${countOf(items)}</b><span>objets</span></div>
         <div><b>${categories.length}</b><span>catégories</span></div>
         <div><b>${total ? money(total) : '–'}</b><span>valeur totale</span></div>
       </div>
@@ -317,17 +325,17 @@
     const prefill = group && group !== NONE ? { [field]: group } : {};
     fab.onclick = () => itemForm(null, cat.id, prefill);
     menuBtn.onclick = () => categoryMenu(cat, group, groupName);
-    const total = list.reduce((s, x) => s + (Number(x.estimated_value) || 0), 0);
+    const total = valueOf(list);
     app.innerHTML = `
       <h2 class="page-title">${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h2>
       <div class="summary">
-        <div><b>${list.length}</b><span>objets</span></div>
+        <div><b>${countOf(list)}</b><span>objets</span></div>
         <div><b>${total ? money(total) : '–'}</b><span>valeur</span></div>
       </div>
       <input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(group ? groupName : cat.name)}">
       <div id="results"></div>`;
     const subCard = (g) => {
-      const n = all.filter((x) => groupOf(x, field) === g).length;
+      const n = countOf(all.filter((x) => groupOf(x, field) === g));
       const label = g === NONE ? (field === 'platform' ? 'Sans console' : 'Sans marque') : g;
       const color = g === NONE ? '#475569' : groupColor(g);
       const img = groupImageUrl(cat.id, g);
@@ -371,7 +379,8 @@
         ${field('Console', x.platform)}
         ${field('Marque', x.brand)}
         ${field('Année', x.year)}
-        ${field('Tarif', money(x.estimated_value))}
+        ${field('Quantité', qty(x) > 1 ? `× ${qty(x)}` : '')}
+        ${field('Tarif', money(x.estimated_value) + (qty(x) > 1 && x.estimated_value ? ` l’unité (${money(x.estimated_value * qty(x))} en tout)` : ''))}
         ${field('Lieu', x.location)}
         ${field('Obtenu le', x.acquired_on && new Date(x.acquired_on + 'T12:00').toLocaleDateString('fr-FR'))}
         ${field('État', x.condition)}
@@ -415,10 +424,12 @@
           <div><label>Année</label><input name="year" inputmode="numeric" value="${esc(x?.year)}" placeholder="Ex. : 1996"></div>
           <div><label>Tarif (€)</label><input name="estimated_value" inputmode="decimal" value="${esc(x?.estimated_value)}" placeholder="Ex. : 25"></div>
         </div>
-        <label>Propriétaire</label>
-        <select name="owner"><option value="">Choisir…</option>${OWNERS.map((o) => `<option ${o === x?.owner ? 'selected' : ''}>${o}</option>`).join('')}</select>
         <div class="row">
-          <div><label>Lieu</label><select name="location"><option value="">Choisir…</option>${[...new Set([...PLACES, ...(x?.location ? [x.location] : [])])].map((o) => `<option ${o === x?.location ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>
+          <div><label>Quantité</label><div class="stepper"><button type="button" data-q="-1">−</button><input name="quantity" inputmode="numeric" value="${x ? qty(x) : 1}"><button type="button" data-q="1">+</button></div></div>
+          <div><label>Propriétaire</label>${selectOther('owner', withUsed(OWNERS, 'owner'), x?.owner, 'Nom')}</div>
+        </div>
+        <div class="row">
+          <div><label>Lieu</label>${selectOther('location', withUsed(PLACES, 'location'), x?.location, 'Nom du lieu')}</div>
           <div><label>Obtenu le</label><input name="acquired_on" type="date" value="${esc(x?.acquired_on)}"></div>
         </div>
         <details ${x?.condition || x?.purchase_price || x?.notes ? 'open' : ''}><summary>Plus de détails (facultatif)</summary>
@@ -440,12 +451,17 @@
       const brand = prev ? otherValue(prev, 'brand') : (x ? x.brand : prefill.brand);
       const showPlatform = kind === 'jeux' || kind === 'consoles' || platform;
       $('#dyn').innerHTML = `
-        ${showPlatform ? `<div><label>Console</label>${selectOther('platform', PLATFORMS, platform, 'Nom de la console')}</div>` : ''}
-        <div><label>Marque</label>${selectOther('brand', brandsFor(kind), brand, 'Nom de la marque')}</div>`;
+        ${showPlatform ? `<div><label>Console</label>${selectOther('platform', withUsed(PLATFORMS, 'platform'), platform, 'Nom de la console')}</div>` : ''}
+        <div><label>Marque</label>${selectOther('brand', withUsed(brandsFor(kind), 'brand'), brand, 'Nom de la marque')}</div>`;
       wireOther($('#dyn'));
     };
     drawDyn();
     $('[name=category_id]').onchange = drawDyn;
+    wireOther($('#f'));
+    modalBody.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => {
+      const q = $('[name=quantity]');
+      q.value = Math.max(1, (parseInt(q.value, 10) || 1) + Number(b.dataset.q));
+    }));
     $('#cancel').onclick = closeModal;
     $('#photo').onchange = async (e) => {
       const file = e.target.files[0];
@@ -464,9 +480,9 @@
       const row = {
         name: fd.name.trim(), category_id: fd.category_id,
         platform: otherValue(fd, 'platform'), brand: otherValue(fd, 'brand'),
-        year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: fd.owner || null,
+        year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: otherValue(fd, 'owner'), quantity: Math.max(1, parseInt(fd.quantity, 10) || 1),
         condition: fd.condition || null, purchase_price: numOrNull(fd.purchase_price),
-        location: fd.location || null, acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
+        location: otherValue(fd, 'location'), acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
       };
       $('#save').disabled = true; $('#save').textContent = 'Enregistrement…';
       try {
