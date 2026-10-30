@@ -96,3 +96,4 @@ create policy "collection_photos_owner_delete" on storage.objects
 
 -- Ajouts après la première version
 alter table public.collection_items add column if not exists acquired_on date;
+alter table public.collection_settings add column if not exists group_images jsonb not null default '{}'::jsonb;

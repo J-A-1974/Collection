@@ -23,9 +23,11 @@
   ];
   const OWNERS = ['Papa', 'Maman', 'Anaïs', 'Elodie'];
   const PLACES = ['Normandie', 'Montgeron'];
-  const PLATFORMS = ['PS5', 'PS4', 'PS3', 'PS2', 'PS1', 'PSP', 'PS Vita', 'Nintendo Switch', 'Wii U', 'Wii', 'GameCube', 'Nintendo 64',
-    'Super Nintendo', 'NES', 'Nintendo DS', 'Nintendo 3DS', 'Game Boy', 'Game Boy Advance', 'Xbox Series', 'Xbox One', 'Xbox 360', 'Xbox',
-    'Master System', 'Mega Drive', 'Saturn', 'Dreamcast', 'Neo Geo', 'Atari 2600', 'PC'];
+  // Sous-cartes proposées d'office dans « Jeux vidéo » et « Consoles »
+  const FEATURED_PLATFORMS = ['PS1', 'PS2', 'PS3', 'PS4', 'PS5', 'Master System', 'Mega Drive', 'Mega CD', 'Xbox 360', 'Xbox One'];
+  const PLATFORMS = [...FEATURED_PLATFORMS, 'PSP', 'PS Vita', 'Xbox', 'Xbox Series', 'Saturn', 'Dreamcast', 'Game Gear',
+    'NES', 'Super Nintendo', 'Nintendo 64', 'GameCube', 'Wii', 'Wii U', 'Nintendo Switch', 'Game Boy', 'Game Boy Advance', 'Nintendo DS', 'Nintendo 3DS',
+    'Neo Geo', 'Atari 2600', 'PC'];
   const BRANDS = {
     jeux: ['Nintendo', 'Sony', 'Microsoft', 'Sega', 'Atari', 'SNK', 'Ubisoft', 'Electronic Arts', 'Activision', 'Square Enix', 'Capcom', 'Konami', 'Bandai Namco', 'Rockstar', 'Bethesda'],
     jouets: ['Playmobil', 'Lego', 'Mattel', 'Hasbro', 'Kenner', 'Bandai', 'Hot Wheels', 'Majorette', 'Corolle', 'Smoby', 'VTech', 'Ravensburger', 'Asmodee', 'Dujardin', 'Panini'],
@@ -167,6 +169,27 @@
   }
   logoEl.onclick = () => user && go('#/');
 
+  // Images des sous-cartes : { "idCatégorie|PS2": { path } ou { url } }
+  const groupImages = () => settings.group_images || {};
+  const groupImagePaths = () => Object.values(groupImages()).map((v) => v.path).filter(Boolean);
+  function groupImageUrl(catId, g) {
+    const v = groupImages()[`${catId}|${g}`];
+    return v ? (v.path ? urlCache.get(v.path) : v.url) : null;
+  }
+  async function setGroupImage(catId, g, value) {
+    const key = `${catId}|${g}`;
+    const old = groupImages()[key];
+    const next = { ...groupImages() };
+    if (value) next[key] = value; else delete next[key];
+    try { await saveSettings({ group_images: next }); }
+    catch (e) {
+      if (/group_images/.test(e?.message || '')) throw new Error('il manque une petite mise à jour dans Supabase (voir le message de Claude)');
+      throw e;
+    }
+    await signedUrls(groupImagePaths());
+    if (old?.path && old.path !== value?.path) removeFiles([old.path]);
+  }
+
   async function saveSettings(patch) {
     const old = { ...settings };
     settings = { ...settings, ...patch, user_id: user.id, updated_at: new Date().toISOString() };
@@ -195,7 +218,7 @@
       if (error) throw error;
       categories = data;
     }
-    await signedUrls([...items.map((x) => x.photo_path), settings.bg_path, settings.logo_path]);
+    await signedUrls([...items.map((x) => x.photo_path), settings.bg_path, settings.logo_path, ...groupImagePaths()]);
     applyLook();
   }
 
@@ -209,6 +232,22 @@
     const style = url ? `background-image:url('${esc(url)}')` : `background:linear-gradient(160deg, ${esc(color)}, ${esc(shade(color))})`;
     return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${esc(icon)}</span>`}</div>`;
   }
+  // Couleur d'une sous-carte selon la famille de console ou la marque
+  function groupColor(v) {
+    const n = (v || '').toLowerCase();
+    if (/^ps|playstation|psp|vita|sony/.test(n)) return '#1f4bd8';
+    if (/xbox|microsoft/.test(n)) return '#118a11';
+    if (/sega|master|mega|saturn|dreamcast|game gear/.test(n)) return '#0b3d91';
+    if (/nintendo|wii|switch|game ?boy|nes|gamecube|\bds\b|3ds/.test(n)) return '#d4001a';
+    if (/atari|neo ?geo|snk/.test(n)) return '#9a4a12';
+    let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return COLORS[h % COLORS.length];
+  }
+  const groupField = (cat) => (['jeux', 'consoles'].includes(kindOf(cat)) ? 'platform' : 'brand');
+  const NONE = '__aucun';
+  const groupOf = (x, field) => x[field] || NONE;
+  const groupLink = (catId, g) => `#/c/${catId}/${encodeURIComponent(g)}`;
+
   function shade(hex) {
     const n = parseInt(String(hex).replace('#', ''), 16);
     if (Number.isNaN(n)) return '#1b1435';
@@ -260,24 +299,53 @@
     draw();
   }
 
-  function renderCategory(id) {
+  function renderCategory(id, group = null) {
     const cat = categories.find((c) => c.id === id);
     if (!cat) return go('#/');
+    const field = groupField(cat);
+    const all = items.filter((x) => x.category_id === id);
+    // Les sous-cartes : celles proposées d'office (jeux et consoles) + celles déjà utilisées
+    const used = [...new Set(all.map((x) => x[field]).filter(Boolean))];
+    const preset = field === 'platform' ? FEATURED_PLATFORMS : [];
+    const groups = [...preset, ...used.filter((v) => !preset.includes(v)).sort((a, b) => a.localeCompare(b, 'fr'))];
+    if (all.some((x) => !x[field])) groups.push(NONE);
+    const useGroups = !group && (preset.length || used.length);
+    const list = group ? all.filter((x) => groupOf(x, field) === group) : all;
+    const groupName = group === NONE ? (field === 'platform' ? 'Sans console' : 'Sans marque') : group;
+
     setHeader({ back: true });
-    fab.onclick = () => itemForm(null, cat.id);
-    menuBtn.onclick = () => categoryMenu(cat);
-    const list = items.filter((x) => x.category_id === id);
+    const prefill = group && group !== NONE ? { [field]: group } : {};
+    fab.onclick = () => itemForm(null, cat.id, prefill);
+    menuBtn.onclick = () => categoryMenu(cat, group, groupName);
     const total = list.reduce((s, x) => s + (Number(x.estimated_value) || 0), 0);
     app.innerHTML = `
-      <h2 class="page-title">${esc(cat.icon)} ${esc(cat.name)}</h2>
+      <h2 class="page-title">${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h2>
       <div class="summary">
         <div><b>${list.length}</b><span>objets</span></div>
         <div><b>${total ? money(total) : '–'}</b><span>valeur</span></div>
       </div>
-      <input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(cat.name)}">
+      <input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(group ? groupName : cat.name)}">
       <div id="results"></div>`;
+    const subCard = (g) => {
+      const n = all.filter((x) => groupOf(x, field) === g).length;
+      const label = g === NONE ? (field === 'platform' ? 'Sans console' : 'Sans marque') : g;
+      const color = g === NONE ? '#475569' : groupColor(g);
+      const img = groupImageUrl(cat.id, g);
+      const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
+      const bg = img ? `background:#fff url('${esc(img)}') center / contain no-repeat` : `background:linear-gradient(160deg, ${color}, ${shade(color)})`;
+      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, g)}">
+        <div class="face" style="${bg}"><span class="tag" style="font-size:${size}rem">${esc(label)}</span></div>
+        <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
+    };
     const draw = () => {
       const q = $('#search').value.trim().toLowerCase();
+      if (useGroups && !q) {
+        $('#results').innerHTML = `<div class="grid">${groups.map(subCard).join('')}</div>
+          <p class="hint" style="text-align:center;margin-top:16px">${field === 'platform'
+            ? 'Quand tu choisis la console d’un objet, il se range tout seul dans la bonne carte.'
+            : 'Quand tu choisis la marque d’un objet, il se range tout seul dans la bonne carte.'}</p>`;
+        return;
+      }
       const found = q ? list.filter((x) => matches(x, q)) : list;
       $('#results').innerHTML = found.length ? `<div class="grid">${found.map(itemCard).join('')}</div>`
         : `<p class="empty">${q ? 'Aucun résultat' : 'Aucun objet pour l’instant.<br>Appuie sur le bouton + pour en ajouter un.'}</p>`;
@@ -329,7 +397,7 @@
   }
 
   // ---------- Formulaire objet ----------
-  function itemForm(x = null, categoryId = null) {
+  function itemForm(x = null, categoryId = null, prefill = {}) {
     const catId = x?.category_id || categoryId || categories[0]?.id;
     const url = x?.photo_path && urlCache.get(x.photo_path);
     openModal(`<h3>${x ? 'Modifier' : 'Ajouter un objet'}</h3>
@@ -368,9 +436,9 @@
       const cat = categories.find((c) => c.id === $('[name=category_id]').value);
       const kind = kindOf(cat);
       const prev = $('#dyn').innerHTML ? Object.fromEntries(new FormData($('#f'))) : null;
-      const platform = prev ? otherValue(prev, 'platform') : x?.platform;
-      const brand = prev ? otherValue(prev, 'brand') : x?.brand;
-      const showPlatform = kind === 'jeux' || platform;
+      const platform = prev ? otherValue(prev, 'platform') : (x ? x.platform : prefill.platform);
+      const brand = prev ? otherValue(prev, 'brand') : (x ? x.brand : prefill.brand);
+      const showPlatform = kind === 'jeux' || kind === 'consoles' || platform;
       $('#dyn').innerHTML = `
         ${showPlatform ? `<div><label>Console</label>${selectOther('platform', PLATFORMS, platform, 'Nom de la console')}</div>` : ''}
         <div><label>Marque</label>${selectOther('brand', brandsFor(kind), brand, 'Nom de la marque')}</div>`;
@@ -459,10 +527,15 @@
     };
   }
 
-  function categoryMenu(cat) {
+  function categoryMenu(cat, group = null, groupName = '') {
     const n = items.filter((x) => x.category_id === cat.id).length;
-    openModal(`<h3>${esc(cat.icon)} ${esc(cat.name)}</h3>
+    const hasImg = group && groupImageUrl(cat.id, group);
+    openModal(`<h3>${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
       <div class="stack">
+        ${group ? `<label class="btn file-btn">🖼️ Image de la carte « ${esc(groupName)} »<input type="file" accept="image/*,.svg" id="gFile"></label>
+        <div style="display:flex;gap:8px"><input class="input" id="gUrl" type="url" placeholder="…ou colle le lien d’une image"><button class="btn primary" id="gUrlOk" style="flex:0 0 auto">OK</button></div>
+        ${hasImg ? '<button class="btn" id="gReset">Enlever l’image de cette carte</button>' : ''}
+        <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">` : ''}
         <button class="btn" id="editCat">✏️ Nom, forme, icône, couleur</button>
         <button class="btn" id="look">🎨 Fond d’écran et logo</button>
         <button class="btn danger" id="delCat">Supprimer la catégorie${n ? ` et ses ${plural(n, 'objet')}` : ''}</button>
@@ -471,6 +544,28 @@
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
     $('#look').onclick = lookMenu;
+    if (group) {
+      const done = () => { closeModal(); toast('Image de la carte changée'); };
+      $('#gFile').onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          let blob;
+          if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) {
+            if (file.size > 300 * 1024) throw new Error('Ce SVG est trop lourd (300 Ko maximum)');
+            blob = new Blob([await file.text()], { type: 'image/svg+xml' });
+          } else blob = await compressImage(file, { maxSize: 400, maxKB: 40, keepAlpha: true });
+          await setGroupImage(cat.id, group, { path: await uploadFile(blob) });
+          done();
+        } catch (err) { fail(err); }
+      };
+      $('#gUrlOk').onclick = async () => {
+        const v = $('#gUrl').value.trim();
+        if (!/^https:\/\//i.test(v)) return toast('Le lien doit commencer par https://');
+        try { await setGroupImage(cat.id, group, { url: v }); done(); } catch (err) { fail(err); }
+      };
+      if (hasImg) $('#gReset').onclick = async () => { try { await setGroupImage(cat.id, group, null); closeModal(); toast('Image enlevée'); } catch (err) { fail(err); } };
+    }
     $('#delCat').onclick = async () => {
       if (!confirm(n ? `Supprimer « ${cat.name} » et ses ${plural(n, 'objet')} ? C’est définitif.` : `Supprimer « ${cat.name} » ?`)) return;
       try {
@@ -597,18 +692,23 @@
   function route() {
     if (!user) return renderAuth();
     window.scrollTo(0, 0);
-    const [, type, id] = location.hash.split('/');
-    if (type === 'c') renderCategory(id);
+    const [, type, id, group] = location.hash.split('/');
+    if (type === 'c') renderCategory(id, group ? decodeURIComponent(group) : null);
     else if (type === 'i') renderItem(id);
     else renderHome();
   }
 
   backBtn.onclick = () => {
-    const [, type, id] = location.hash.split('/');
+    const [, type, id, group] = location.hash.split('/');
     if (type === 'i') {
       const x = items.find((i) => i.id === id);
-      return go(x ? `#/c/${x.category_id}` : '#/');
+      if (!x) return go('#/');
+      const cat = categories.find((c) => c.id === x.category_id);
+      const field = groupField(cat);
+      const hasGroups = field === 'platform' || items.some((i) => i.category_id === x.category_id && i.brand);
+      return go(hasGroups ? groupLink(x.category_id, groupOf(x, field)) : `#/c/${x.category_id}`);
     }
+    if (type === 'c' && group) return go(`#/c/${id}`);
     go('#/');
   };
   window.addEventListener('hashchange', route);
