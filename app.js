@@ -404,9 +404,9 @@
     if (g === 'none') return [];
     if (g !== 'auto') return [g];
     if (kindOf(cat) === 'sport') return ['team_type', 'team'];
-    // Sous-thème créé à la main (ex. Vaisselle › Disney › Mugs) : objets affichés directement,
-    // sauf voitures (par marque), jeux/consoles (par console)
-    if (cat?.parent_id && !['voitures', 'jeux', 'consoles'].includes(kindOf(cat))) return [];
+    // Sous-thème (ex. Vaisselle › Disney › Mugs, Collection › Voitures › 1/18) : objets affichés directement.
+    // José peut quand même choisir un rangement avec « ↕ Trier ».
+    if (cat?.parent_id) return [];
     return [autoField(cat)];
   }
   // En mode automatique, une seule sous-carte (ex. tout « Disney ») ne sert à rien : on montre les objets
