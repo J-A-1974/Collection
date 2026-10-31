@@ -404,8 +404,15 @@
     if (g === 'none') return [];
     if (g !== 'auto') return [g];
     if (kindOf(cat) === 'sport') return ['team_type', 'team'];
+    // Sous-thème créé à la main (ex. Vaisselle › Disney › Mugs) : objets affichés directement,
+    // sauf voitures (par marque), jeux/consoles (par console)
+    if (cat?.parent_id && !['voitures', 'jeux', 'consoles'].includes(kindOf(cat))) return [];
     return [autoField(cat)];
   }
+  // En mode automatique, une seule sous-carte (ex. tout « Disney ») ne sert à rien : on montre les objets
+  const PRESET_FIELDS = ['platform', 'team_type'];
+  const skipSingle = (cat, field, pool) => catPrefs(cat?.id).group === 'auto' && !PRESET_FIELDS.includes(field)
+    && new Set(pool.map((x) => groupOf(x, field))).size <= 1;
   const groupField = (cat) => groupChain(cat)[0] || 'none';
   const NONE = '__aucun';
   function groupOf(x, field) {
@@ -505,7 +512,7 @@
     if (cp.groupSort === 'moins') groups.sort((a, b) => countIn(a) - countIn(b));
     if (field && all.some((x) => groupOf(x, field) === NONE)) groups.push(NONE);
     // Pas de sous-cartes vides proposées d'office dans une carte qui ne contient que des sous-thèmes
-    const useGroups = !!field && (used.length || (preset.length && (all.length || !kids.length)));
+    const useGroups = !!field && !skipSingle(cat, field, all) && (used.length || (preset.length && (all.length || !kids.length)));
     const list = sortItems(all, cp.itemSort);
     const labels = path.map((g, i) => groupLabel(g, chain[i]));
     const groupName = labels[labels.length - 1] || '';
@@ -1028,7 +1035,7 @@
       for (const f of chain) {
         const pool = items.filter((i) => i.category_id === x.category_id && p.every((g, k) => groupOf(i, chain[k]) === g));
         const hasGroups = ['platform', 'team_type'].includes(f) || pool.some((i) => groupOf(i, f) !== NONE);
-        if (!hasGroups) break;
+        if (!hasGroups || skipSingle(cat, f, pool)) break;
         p.push(groupOf(x, f));
       }
       return go(p.length ? groupLink(x.category_id, p) : `#/c/${x.category_id}`);
