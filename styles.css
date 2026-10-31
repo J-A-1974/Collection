@@ -331,3 +331,8 @@ details summary { color: var(--accent); cursor: pointer; padding: 6px 0; }
 .lb-bar { display: flex; gap: 10px; width: min(420px, 100%); margin-top: 14px; padding-bottom: env(safe-area-inset-bottom); }
 
 .section-title { font-family: var(--display); font-weight: 400; font-size: 1rem; margin: 22px 0 10px; text-shadow: var(--title-shadow); }
+
+/* Fil d'Ariane cliquable */
+.page-title a.crumb { color: inherit; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; opacity: .85; padding: 4px 0; }
+.page-title a.crumb:active { opacity: .5; }
+.page-title.crumbs-small { font-size: 1rem; margin: 8px 0 12px; }

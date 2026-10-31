@@ -490,6 +490,13 @@
     draw();
   }
 
+  // Fil d'Ariane cliquable : Accueil › Vaisselle › Disney › Mugs (le dernier niveau n'est pas un lien)
+  function crumbsHtml(cat, path = [], labels = [], lastLinked = false) {
+    const parts = [['🏠', '#/']];
+    ancestors(cat).forEach((c, i, arr) => parts.push([i === arr.length - 1 ? `${esc(c.icon)} ${esc(c.name)}` : esc(c.name), `#/c/${c.id}`]));
+    labels.forEach((l, i) => parts.push([esc(l), groupLink(cat.id, path.slice(0, i + 1))]));
+    return parts.map(([t, h], i) => (i === parts.length - 1 && !lastLinked ? `<span>${t}</span>` : `<a class="crumb" href="${h}">${t}</a>`)).join(' › ');
+  }
   function renderCategory(id, path = []) {
     const cat = categories.find((c) => c.id === id);
     if (!cat) return go('#/');
@@ -526,9 +533,8 @@
     menuBtn.onclick = () => categoryMenu(cat, path, groupName);
     const scope = level === 0 ? itemsUnder(cat.id) : list;
     const total = valueOf(scope);
-    const crumbs = [...ancestors(cat).map((c, i, arr) => (i === arr.length - 1 ? `${esc(c.icon)} ${esc(c.name)}` : esc(c.name))), ...labels.map(esc)];
     app.innerHTML = `
-      <h2 class="page-title">${crumbs.join(' › ')}</h2>
+      <h2 class="page-title">${crumbsHtml(cat, path, labels)}</h2>
       <div class="summary">
         <div><b>${countOf(scope)}</b><span>objets</span></div>
         ${kids.length ? `<div><b>${kids.length}</b><span>sous-thèmes</span></div>` : ''}
@@ -612,7 +618,15 @@
     menuBtn.onclick = mainMenu;
     const url = x.photo_path && urlCache.get(x.photo_path);
     const field = (label, value, wide) => (value || value === 0 ? `<div class="${wide ? 'wide' : ''}"><span>${label}</span>${esc(value)}</div>` : '');
-    app.innerHTML = `<div class="detail">
+    // Sous-cartes où se trouve l'objet, pour le fil d'Ariane
+    const chain = cat.id ? groupChain(cat) : [];
+    const gp = [];
+    for (const f of chain) {
+      const pool = items.filter((i) => i.category_id === x.category_id && gp.every((g, k) => groupOf(i, chain[k]) === g));
+      if (!(PRESET_FIELDS.includes(f) || pool.some((i) => groupOf(i, f) !== NONE)) || skipSingle(cat, f, pool)) break;
+      gp.push(groupOf(x, f));
+    }
+    app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
       <div class="hero card shape-${esc(cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       <h2>${esc(x.name)}</h2>
