@@ -438,10 +438,12 @@
     return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
   }
 
+  const CARD_IMG = '__carte'; // image choisie par José pour une carte ou un sous-thème
   function categoryCard(c) {
     const n = countOf(itemsUnder(c.id));
-    return `<a class="card shape-${esc(c.shape || 'classique')}" href="#/c/${c.id}">
-      ${faceHtml(c.shape, c.color, null, c.icon)}
+    const img = groupImageUrl(c.id, CARD_IMG);
+    return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}">
+      ${img ? `<div class="face" style="background:#fff url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
   }
 
@@ -801,6 +803,35 @@
   }
 
   // ---------- Formulaire catégorie ----------
+  // Choix d'une image (fichier JPEG/PNG/SVG ou lien) : renvoie { path } ou { url }
+  function imagePickerHtml(id, title, hasImg) {
+    return `<label class="btn file-btn">🖼️ ${title}<input type="file" accept="image/*,.svg" id="${id}File"></label>
+      <div style="display:flex;gap:8px"><input class="input" id="${id}Url" type="url" placeholder="…ou colle le lien d’une image"><button type="button" class="btn primary" id="${id}UrlOk" style="flex:0 0 auto">OK</button></div>
+      ${hasImg ? `<button type="button" class="btn" id="${id}Reset">Enlever l’image</button>` : ''}`;
+  }
+  async function imageFromFile(file) {
+    if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) {
+      if (file.size > 300 * 1024) throw new Error('Ce SVG est trop lourd (300 Ko maximum)');
+      return { path: await uploadFile(new Blob([await file.text()], { type: 'image/svg+xml' })) };
+    }
+    return { path: await uploadFile(await compressImage(file, { maxSize: 400, maxKB: 40, keepAlpha: true })) };
+  }
+  // onPick(valeur) : valeur = { path } | { url } | null (enlever)
+  function wireImagePicker(id, onPick) {
+    $(`#${id}File`).onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try { toast('Envoi de l’image…'); await onPick(await imageFromFile(file)); } catch (err) { fail(err); }
+    };
+    $(`#${id}UrlOk`).onclick = async () => {
+      const v = $(`#${id}Url`).value.trim();
+      if (!/^https:\/\//i.test(v)) return toast('Le lien doit commencer par https://');
+      try { await onPick({ url: v }); } catch (err) { fail(err); }
+    };
+    const r = $(`#${id}Reset`);
+    if (r) r.onclick = async () => { try { await onPick(null); } catch (err) { fail(err); } };
+  }
+
   function categoryForm(cat = null, parentId = null) {
     let icon = cat?.icon || '📦', color = cat?.color || COLORS[0], shape = cat?.shape || 'classique';
     const parent = parentId && categories.find((c) => c.id === parentId);
@@ -814,6 +845,10 @@
           <div class="emojis">${list.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${e}</button>`).join('')}</div>`).join('')}
         <label>Couleur</label>${[['Classiques', COLORS], ['Vives', VIVID_COLORS], ['Mélanges', GRADIENTS]].map(([t, list]) => `<div class="hint">${t}</div>
           <div class="colors">${list.map((c) => `<button type="button" data-c="${c}" style="background:${colorBg(c)}" class="${c === color ? 'on' : ''}"></button>`).join('')}</div>`).join('')}
+        <label>Image de la carte (facultatif)</label>
+        <p class="hint">Une photo, un logo… en JPEG, PNG ou SVG. Elle remplace l’icône et la couleur.</p>
+        <div class="stack">${imagePickerHtml('ci', 'Choisir une image', cat && groupImageUrl(cat.id, CARD_IMG))}</div>
+        <p class="hint" id="ciState"></p>
         <div class="actions"><button type="button" class="btn" id="cancel">Annuler</button><button class="btn primary" id="save">Enregistrer</button></div>
       </form>`);
     $('#cancel').onclick = closeModal;
@@ -823,6 +858,11 @@
     }));
     pick('s', (v) => (shape = v));
     pick('e', (v) => (icon = v));
+    let newImg; // undefined = pas de changement
+    wireImagePicker('ci', async (v) => {
+      newImg = v;
+      $('#ciState').textContent = v ? '✅ Image prête, appuie sur Enregistrer' : '✅ L’image sera enlevée, appuie sur Enregistrer';
+    });
     pick('c', (v) => {
       color = v;
       modalBody.querySelectorAll('.shapes .face').forEach((f) => (f.style.background = colorBg(v)));
@@ -842,6 +882,7 @@
           throw error;
         }
         categories = cat ? categories.map((c) => (c.id === data.id ? data : c)) : [...categories, data];
+        if (newImg !== undefined) await setGroupImage(data.id, CARD_IMG, newImg);
         closeModal();
         toast(cat ? 'Modifié' : parent ? 'Sous-thème créé' : 'Catégorie créée');
         cat ? route() : go(`#/c/${data.id}`);
@@ -853,13 +894,12 @@
     const group = path.length ? path.join('/') : null;
     const n = countOf(itemsUnder(cat.id));
     const nSub = subtreeIds(cat.id).size - 1;
-    const hasImg = group && groupImageUrl(cat.id, group);
+    const imgKey = group || CARD_IMG;
+    const hasImg = groupImageUrl(cat.id, imgKey);
     openModal(`<h3>${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
       <div class="stack">
-        ${group ? `<label class="btn file-btn">🖼️ Image de la carte « ${esc(groupName)} »<input type="file" accept="image/*,.svg" id="gFile"></label>
-        <div style="display:flex;gap:8px"><input class="input" id="gUrl" type="url" placeholder="…ou colle le lien d’une image"><button class="btn primary" id="gUrlOk" style="flex:0 0 auto">OK</button></div>
-        ${hasImg ? '<button class="btn" id="gReset">Enlever l’image de cette carte</button>' : ''}
-        <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">` : ''}
+        ${imagePickerHtml('g', `Image de la carte « ${esc(group ? groupName : cat.name)} » (JPEG, PNG, SVG)`, hasImg)}
+        <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">
         <button class="btn" id="editCat">✏️ Nom, forme, icône, couleur</button>
         <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
@@ -870,28 +910,10 @@
     $('#editCat').onclick = () => categoryForm(cat);
     $('#addSubM').onclick = () => categoryForm(null, cat.id);
     $('#look').onclick = lookMenu;
-    if (group) {
-      const done = () => { closeModal(); toast('Image de la carte changée'); };
-      $('#gFile').onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          let blob;
-          if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) {
-            if (file.size > 300 * 1024) throw new Error('Ce SVG est trop lourd (300 Ko maximum)');
-            blob = new Blob([await file.text()], { type: 'image/svg+xml' });
-          } else blob = await compressImage(file, { maxSize: 400, maxKB: 40, keepAlpha: true });
-          await setGroupImage(cat.id, group, { path: await uploadFile(blob) });
-          done();
-        } catch (err) { fail(err); }
-      };
-      $('#gUrlOk').onclick = async () => {
-        const v = $('#gUrl').value.trim();
-        if (!/^https:\/\//i.test(v)) return toast('Le lien doit commencer par https://');
-        try { await setGroupImage(cat.id, group, { url: v }); done(); } catch (err) { fail(err); }
-      };
-      if (hasImg) $('#gReset').onclick = async () => { try { await setGroupImage(cat.id, group, null); closeModal(); toast('Image enlevée'); } catch (err) { fail(err); } };
-    }
+    wireImagePicker('g', async (v) => {
+      await setGroupImage(cat.id, imgKey, v);
+      closeModal(); toast(v ? 'Image de la carte changée' : 'Image enlevée'); route();
+    });
     $('#delCat').onclick = async () => {
       if (!confirm(n || nSub ? `Supprimer « ${cat.name} »${nSub ? `, ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` et ${plural(n, 'objet')}` : ''} ? C’est définitif.` : `Supprimer « ${cat.name} » ?`)) return;
       try {
