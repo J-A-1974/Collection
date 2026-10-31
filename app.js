@@ -42,17 +42,52 @@
   const BRANDS = {
     jeux: ['Nintendo', 'Sony', 'Microsoft', 'Sega', 'Atari', 'SNK', 'Ubisoft', 'Electronic Arts', 'Activision', 'Square Enix', 'Capcom', 'Konami', 'Bandai Namco', 'Rockstar', 'Bethesda'],
     jouets: ['Playmobil', 'Lego', 'Mattel', 'Hasbro', 'Kenner', 'Bandai', 'Hot Wheels', 'Majorette', 'Corolle', 'Smoby', 'VTech', 'Ravensburger', 'Asmodee', 'Dujardin', 'Panini'],
+    voitures: ['Ferrari', 'Lamborghini', 'Porsche', 'Bugatti', 'McLaren', 'Aston Martin', 'Mercedes', 'BMW', 'Audi', 'Volkswagen', 'Peugeot', 'Renault', 'Citroën', 'Alpine', 'Ford', 'Chevrolet', 'Dodge', 'Jaguar', 'Mini', 'Fiat',
+      'Burago', 'Maisto', 'Solido', 'Norev', 'Majorette', 'Hot Wheels', 'Minichamps', 'Kyosho', 'AutoArt'],
+    musique: ['Universal', 'Sony Music', 'Warner', 'EMI', 'Columbia', 'Polydor', 'Virgin', 'Atlantic', 'Disney', 'Warner Bros', 'Gaumont', 'Pathé', 'Fox', 'Paramount'],
+    vaisselle: ['Disney', 'Arcopal', 'Luminarc', 'Duralex', 'Pyrex', 'Villeroy & Boch', 'Le Creuset', 'Ikea', 'Primark', 'Disney Store'],
     sport: ['Adidas', 'Nike', 'Puma', 'Kappa', 'Le Coq Sportif', 'Umbro', 'Macron', 'New Balance', 'Kipsta', 'Mitre', 'Select'],
   };
   // Type de catégorie, d'après son nom, pour proposer les bons champs et les bonnes marques
+  // ---------- Arborescence : catégories et sous-thèmes ----------
+  const childrenOf = (id) => categories.filter((c) => (c.parent_id || null) === (id || null))
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || cmpText(a.created_at || '', b.created_at || ''));
+  function subtreeIds(id) {
+    const ids = new Set([id]);
+    let added = true;
+    while (added) { added = false; for (const c of categories) if (c.parent_id && ids.has(c.parent_id) && !ids.has(c.id)) { ids.add(c.id); added = true; } }
+    return ids;
+  }
+  const itemsUnder = (id) => { const ids = subtreeIds(id); return items.filter((x) => ids.has(x.category_id)); };
+  function ancestors(cat) {
+    const out = []; let c = cat; let guard = 0;
+    while (c && guard++ < 20) { out.unshift(c); c = categories.find((p) => p.id === c.parent_id); }
+    return out;
+  }
+  const pathName = (cat) => ancestors(cat).map((c) => c.name).join(' › ');
+  // Toutes les catégories dans l'ordre de l'arbre (pour le menu « Catégorie » d'un objet)
+  function treeList(parent = null, depth = 0, out = []) {
+    for (const c of childrenOf(parent)) { out.push({ c, depth }); treeList(c.id, depth + 1, out); }
+    return out;
+  }
+
   function kindOf(cat) {
-    const n = (cat?.name || '').toLowerCase();
+    const n = ancestors(cat).map((c) => c.name).join(' ').toLowerCase();
+    if (/voiture|auto|miniature|1\s*[\/:]\s*\d+/.test(n)) return 'voitures';
+    if (/musique|vinyle|\bcd\b|cassette|dvd|blu-?ray|vhs|film/.test(n)) return 'musique';
+    if (/vaisselle|bol|mug|assiette|couvert|verre/.test(n)) return 'vaisselle';
     if (/jeux?\s*vid|vid[ée]o/.test(n)) return 'jeux';
     if (/console/.test(n)) return 'consoles';
     if (/maillot|ballon|foot|sport|crampon|basket/.test(n)) return 'sport';
     if (/jouet|playmo|lego|figurine|poup|peluche|carte|jeu|voiture|maquette/.test(n)) return 'jouets';
     return 'autre';
   }
+  const NATIONAL_TEAMS = ['France', 'Portugal', 'Argentine', 'Brésil', 'Allemagne', 'Espagne', 'Italie', 'Angleterre', 'Pays-Bas', 'Belgique', 'Croatie',
+    'Uruguay', 'Mexique', 'États-Unis', 'Japon', 'Maroc', 'Sénégal', 'Algérie', 'Cameroun', 'Côte d’Ivoire', 'Colombie', 'Suisse', 'Danemark', 'Suède', 'Écosse'];
+  const CLUBS = ['Paris SG', 'Marseille', 'Lyon', 'Lille', 'Monaco', 'Nantes', 'Saint-Étienne', 'Bordeaux', 'Lens', 'Rennes', 'Nice', 'Benfica', 'FC Porto', 'Sporting CP',
+    'Real Madrid', 'FC Barcelone', 'Atlético Madrid', 'Manchester United', 'Manchester City', 'Liverpool', 'Arsenal', 'Chelsea', 'Juventus', 'AC Milan', 'Inter Milan',
+    'Bayern Munich', 'Borussia Dortmund', 'Ajax', 'Boca Juniors', 'Flamengo'];
+  const TEAM_TYPES = ['Équipe nationale', 'Club'];
   function brandsFor(kind) {
     if (kind === 'jeux' || kind === 'consoles') return BRANDS.jeux;
     if (BRANDS[kind]) return BRANDS[kind];
@@ -135,7 +170,7 @@
   const money = (v) => (v == null || v === '' ? '' : Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }));
   const numOrNull = (v) => (v === '' || v == null ? null : Number(String(v).replace(',', '.')));
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
-  const matches = (x, q) => [x.name, x.brand, x.platform, x.owner, x.location, x.notes].some((f) => (f || '').toLowerCase().includes(q));
+  const matches = (x, q) => [x.name, x.brand, x.platform, x.team, x.owner, x.location, x.notes].some((f) => (f || '').toLowerCase().includes(q));
 
   function toast(msg, ms = 2500) {
     const t = $('#toast');
@@ -262,6 +297,46 @@
     }
     await signedUrls([...items.map((x) => x.photo_path), settings.bg_path, settings.logo_path, ...groupImagePaths()]);
     applyLook();
+    await seedCollection();
+  }
+
+  // Cartes de départ avec leurs sous-thèmes, créées une seule fois (si la base gère les sous-thèmes)
+  const SEEDS = [
+    { key: 'collection', name: 'Collection', icon: '🏆', color: 'grad:#d500f9,#2979ff,#00e5ff', shape: 'appli', kids: [
+      { name: 'Harry Potter', icon: '🧙', color: 'grad:#8e2de2,#ff4081,#ffb800', shape: 'ecusson', kids: [
+        { name: 'Jouets', icon: '🧸', color: '#ec4899' }, { name: 'Livres', icon: '📚', color: '#0ea5e9' },
+        { name: 'Films', icon: '🎬', color: '#ef4444' }, { name: 'Objets de collection', icon: '🏺', color: '#f59e0b' }] },
+      { name: 'Voitures', icon: '🏎️', color: 'grad:#ff1744,#ff9100', kids: [
+        { name: '1/18', icon: '🚗', color: '#ff1744', shape: 'appli' }, { name: '1/24', icon: '🚗', color: '#2979ff', shape: 'appli' },
+        { name: '1/43', icon: '🚗', color: '#00e676', shape: 'appli' }] }] },
+    { key: 'vaisselle', name: 'Vaisselle', icon: '☕', color: 'grad:#1de9b6,#2979ff', shape: 'ballon', kids: [
+      { name: 'Disney', icon: '🏰', color: 'grad:#2979ff,#d500f9', shape: 'ecusson', kids: [
+        { name: 'Bols', icon: '🥣', color: '#ff9100' }, { name: 'Mugs', icon: '☕', color: '#ff4081' }, { name: 'Assiettes', icon: '🍽️', color: '#00b0ff' },
+        { name: 'Couverts', icon: '🍴', color: '#64748b' }, { name: 'Verres', icon: '🥛', color: '#1de9b6' }] }] },
+    { key: 'musique', name: 'Musique et films', icon: '🎵', color: 'grad:#ff1744,#d500f9,#2979ff', shape: 'bouton', kids: [
+      { name: 'CD', icon: '💿', color: '#00b0ff', shape: 'ballon' }, { name: 'Vinyles', icon: '🎶', color: '#111111', shape: 'ballon' },
+      { name: 'Cassettes', icon: '📼', color: '#ff9100', shape: 'ticket' },
+      { name: 'Films', icon: '🎬', color: '#ef4444', shape: 'ecran', kids: [
+        { name: 'DVD', icon: '📀', color: '#2979ff' }, { name: 'Blu-ray', icon: '📀', color: '#00b0ff' }, { name: 'VHS', icon: '📼', color: '#111111' }] }] },
+  ];
+  async function seedCollection() {
+    if (!categories.length || !('parent_id' in categories[0])) return;
+    const make = async (node, parentId, position) => {
+      const row = { name: node.name, icon: node.icon, color: node.color, shape: node.shape || 'classique', position };
+      if (parentId) row.parent_id = parentId;
+      const { data, error } = await sb.from('collection_categories').insert(row).select().single();
+      if (error) throw error;
+      categories.push(data);
+      for (const [i, k] of (node.kids || []).entries()) await make(k, data.id, i);
+    };
+    for (const seed of SEEDS) {
+      if (prefs.__seed?.[seed.key]) continue;
+      try {
+        const exists = categories.some((c) => !c.parent_id && c.name.trim().toLowerCase() === seed.name.toLowerCase());
+        if (!exists) await make(seed, null, childrenOf(null).length);
+        await savePrefs('__seed', { [seed.key]: true });
+      } catch (e) { console.warn('Carte non créée', seed.name, e); }
+    }
   }
 
   // ---------- Écrans ----------
@@ -297,7 +372,7 @@
     try { await sb.from('collection_settings').upsert({ user_id: user.id, view_prefs: prefs }); } catch {}
   }
   const GROUP_FIELDS = [
-    ['auto', 'Automatique (console ou marque)'], ['platform', 'Console'], ['brand', 'Marque'], ['owner', 'Propriétaire'],
+    ['auto', 'Automatique'], ['platform', 'Console'], ['brand', 'Marque'], ['team_type', 'Équipe nationale ou club'], ['team', 'Équipe'], ['owner', 'Propriétaire'],
     ['location', 'Lieu'], ['year', 'Année'], ['condition', 'État'], ['price', 'Tarif'], ['letter', 'Première lettre du nom'], ['none', 'Pas de sous-cartes'],
   ];
   const GROUP_SORTS = [['defaut', 'Ordre actuel'], ['az', 'A → Z'], ['za', 'Z → A'], ['plus', 'Plus d’objets d’abord'], ['moins', 'Moins d’objets d’abord']];
@@ -323,7 +398,15 @@
   }
 
   const autoField = (cat) => (['jeux', 'consoles'].includes(kindOf(cat)) ? 'platform' : 'brand');
-  const groupField = (cat) => { const g = catPrefs(cat?.id).group; return g === 'auto' ? autoField(cat) : g; };
+  // Niveaux de sous-cartes : ex. maillots → « Équipe nationale / Club » puis « Équipe »
+  function groupChain(cat) {
+    const g = catPrefs(cat?.id).group;
+    if (g === 'none') return [];
+    if (g !== 'auto') return [g];
+    if (kindOf(cat) === 'sport') return ['team_type', 'team'];
+    return [autoField(cat)];
+  }
+  const groupField = (cat) => groupChain(cat)[0] || 'none';
   const NONE = '__aucun';
   function groupOf(x, field) {
     if (field === 'none') return NONE;
@@ -337,9 +420,9 @@
     return v == null || v === '' ? NONE : String(v);
   }
   const NONE_LABELS = { platform: 'Sans console', brand: 'Sans marque', owner: 'Sans propriétaire', location: 'Sans lieu', year: 'Sans année',
-    condition: 'Sans état', price: 'Sans tarif', letter: 'Sans nom' };
+    condition: 'Sans état', price: 'Sans tarif', letter: 'Sans nom', team_type: 'Sans type', team: 'Sans équipe' };
   const groupLabel = (g, field) => (g === NONE ? NONE_LABELS[field] || 'Autres' : g);
-  const groupLink = (catId, g) => `#/c/${catId}/${encodeURIComponent(g)}`;
+  const groupLink = (catId, g) => `#/c/${catId}/${(Array.isArray(g) ? g : [g]).map(encodeURIComponent).join('/')}`;
 
   function shade(hex, k = 0.6) {
     const n = parseInt(String(hex).replace('#', ''), 16);
@@ -349,7 +432,7 @@
   }
 
   function categoryCard(c) {
-    const n = countOf(items.filter((x) => x.category_id === c.id));
+    const n = countOf(itemsUnder(c.id));
     return `<a class="card shape-${esc(c.shape || 'classique')}" href="#/c/${c.id}">
       ${faceHtml(c.shape, c.color, null, c.icon)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
@@ -358,7 +441,7 @@
   function itemCard(x) {
     const cat = categories.find((c) => c.id === x.category_id) || {};
     const url = x.photo_path && urlCache.get(x.photo_path);
-    const sub = [x.platform || x.brand, x.year, x.owner, x.location].filter(Boolean).join(' · ');
+    const sub = [x.team || x.platform || x.brand, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     return `<a class="card shape-${esc(cat.shape || 'classique')}" href="#/i/${x.id}">
       <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
@@ -372,7 +455,7 @@
     app.innerHTML = `
       <div class="summary">
         <div><b>${countOf(items)}</b><span>objets</span></div>
-        <div><b>${categories.length}</b><span>catégories</span></div>
+        <div><b>${childrenOf(null).length}</b><span>catégories</span></div>
         <div><b>${total ? money(total) : '–'}</b><span>valeur totale</span></div>
       </div>
       <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans toute la collection">
@@ -387,8 +470,8 @@
         return;
       }
       const hs = prefs.home?.sort || 'manuel';
-      const cnt = (c) => countOf(items.filter((x) => x.category_id === c.id));
-      const cats = [...categories].sort({
+      const cnt = (c) => countOf(itemsUnder(c.id));
+      const cats = childrenOf(null).sort({
         az: (a, b) => cmpText(a.name, b.name), za: (a, b) => cmpText(b.name, a.name),
         plus: (a, b) => cnt(b) - cnt(a), moins: (a, b) => cnt(a) - cnt(b),
       }[hs] || (() => 0));
@@ -400,69 +483,95 @@
     draw();
   }
 
-  function renderCategory(id, group = null) {
+  function renderCategory(id, path = []) {
     const cat = categories.find((c) => c.id === id);
     if (!cat) return go('#/');
     const cp = catPrefs(cat.id);
-    const field = groupField(cat);
-    const all = items.filter((x) => x.category_id === id);
-    // Les sous-cartes : celles proposées d'office (consoles des jeux vidéo) + celles déjà utilisées
-    const used = [...new Set(all.map((x) => groupOf(x, field)))].filter((g) => g !== NONE);
-    const preset = field === 'platform' ? FEATURED_PLATFORMS : [];
+    const chain = groupChain(cat);
+    const level = path.length;
+    const field = chain[level];
+    const kids = level === 0 ? childrenOf(cat.id) : [];
+    // Objets rangés directement dans cette carte, filtrés par les sous-cartes déjà ouvertes
+    const all = items.filter((x) => x.category_id === id && path.every((g, i) => groupOf(x, chain[i]) === g));
+    const used = field ? [...new Set(all.map((x) => groupOf(x, field)))].filter((g) => g !== NONE) : [];
+    const preset = field === 'platform' ? FEATURED_PLATFORMS : field === 'team_type' ? TEAM_TYPES : [];
     const extra = used.filter((v) => !preset.includes(v));
     extra.sort(field === 'price' ? (a, b) => PRICE_RANGES.indexOf(a) - PRICE_RANGES.indexOf(b) : cmpText);
-    let groups = [...preset, ...extra];
+    const groups = [...preset, ...extra];
     const countIn = (g) => countOf(all.filter((x) => groupOf(x, field) === g));
     if (cp.groupSort === 'az') groups.sort(cmpText);
     if (cp.groupSort === 'za') groups.sort((a, b) => cmpText(b, a));
     if (cp.groupSort === 'plus') groups.sort((a, b) => countIn(b) - countIn(a));
     if (cp.groupSort === 'moins') groups.sort((a, b) => countIn(a) - countIn(b));
-    if (all.some((x) => groupOf(x, field) === NONE)) groups.push(NONE);
-    const useGroups = !group && field !== 'none' && (preset.length || used.length);
-    const list = sortItems(group ? all.filter((x) => groupOf(x, field) === group) : all, cp.itemSort);
-    const groupName = group ? groupLabel(group, field) : '';
+    if (field && all.some((x) => groupOf(x, field) === NONE)) groups.push(NONE);
+    // Pas de sous-cartes vides proposées d'office dans une carte qui ne contient que des sous-thèmes
+    const useGroups = !!field && (used.length || (preset.length && (all.length || !kids.length)));
+    const list = sortItems(all, cp.itemSort);
+    const labels = path.map((g, i) => groupLabel(g, chain[i]));
+    const groupName = labels[labels.length - 1] || '';
 
     setHeader({ back: true });
-    const prefill = group && group !== NONE && ['platform', 'brand', 'owner', 'location', 'year', 'condition'].includes(field) ? { [field]: group } : {};
+    const prefill = {};
+    path.forEach((g, i) => {
+      if (g !== NONE && ['platform', 'brand', 'owner', 'location', 'year', 'condition', 'team_type', 'team'].includes(chain[i])) prefill[chain[i]] = g;
+    });
     fab.onclick = () => itemForm(null, cat.id, prefill);
-    menuBtn.onclick = () => categoryMenu(cat, group, groupName);
-    const total = valueOf(list);
+    menuBtn.onclick = () => categoryMenu(cat, path, groupName);
+    const scope = level === 0 ? itemsUnder(cat.id) : list;
+    const total = valueOf(scope);
+    const crumbs = [...ancestors(cat).map((c, i, arr) => (i === arr.length - 1 ? `${esc(c.icon)} ${esc(c.name)}` : esc(c.name))), ...labels.map(esc)];
     app.innerHTML = `
-      <h2 class="page-title">${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h2>
+      <h2 class="page-title">${crumbs.join(' › ')}</h2>
       <div class="summary">
-        <div><b>${countOf(list)}</b><span>objets</span></div>
+        <div><b>${countOf(scope)}</b><span>objets</span></div>
+        ${kids.length ? `<div><b>${kids.length}</b><span>sous-thèmes</span></div>` : ''}
         <div><b>${total ? money(total) : '–'}</b><span>valeur</span></div>
       </div>
-      <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(group ? groupName : cat.name)}">
+      <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(groupName || cat.name)}">
         <button class="sort-btn" id="sortBtn">↕ Trier</button></div>
       <div id="results"></div>`;
     $('#sortBtn').onclick = () => sortMenu(`Trier et classer « ${cat.name} »`, [
       ['group', 'Ranger les objets en sous-cartes par', GROUP_FIELDS],
       ['groupSort', 'Ordre des sous-cartes', GROUP_SORTS],
       ['itemSort', 'Ordre des objets', ITEM_SORTS],
-    ], cp, (p) => savePrefs(cat.id, p), () => { if (group) go(`#/c/${cat.id}`); });
+    ], cp, (p) => savePrefs(cat.id, p), () => { if (level) go(`#/c/${cat.id}`); });
     const subCard = (g) => {
       const n = countIn(g);
       const label = groupLabel(g, field);
       const color = g === NONE ? '#475569' : groupColor(g);
-      const img = groupImageUrl(cat.id, g);
+      const img = groupImageUrl(cat.id, [...path, g].join('/'));
       const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
       const bg = img ? `background:#fff url('${esc(img)}') center / contain no-repeat` : `background:linear-gradient(160deg, ${color}, ${shade(color)})`;
-      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, g)}">
+      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}">
         <div class="face" style="${bg}"><span class="tag" style="--fs:${size}">${esc(label)}</span></div>
         <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
     };
     const fieldName = (GROUP_FIELDS.find((f) => f[0] === field)?.[1] || '').toLowerCase();
     const draw = () => {
       const q = $('#search').value.trim().toLowerCase();
-      if (useGroups && !q) {
-        $('#results').innerHTML = `<div class="grid">${groups.map(subCard).join('')}</div>
-          <p class="hint" style="text-align:center;margin-top:16px">Les objets sont rangés par ${esc(fieldName)}. Tu peux changer ça avec le bouton « ↕ Trier ».</p>`;
+      if (q) {
+        const pool = level === 0 ? itemsUnder(cat.id) : all;
+        const found = sortItems(pool.filter((x) => matches(x, q)), cp.itemSort);
+        $('#results').innerHTML = found.length ? `<div class="grid">${found.map(itemCard).join('')}</div>` : '<p class="empty">Aucun résultat</p>';
         return;
       }
-      const found = q ? sortItems(all.filter((x) => matches(x, q)), cp.itemSort) : list;
-      $('#results').innerHTML = found.length ? `<div class="grid">${found.map(itemCard).join('')}</div>`
-        : `<p class="empty">${q ? 'Aucun résultat' : 'Aucun objet pour l’instant.<br>Appuie sur le bouton + pour en ajouter un.'}</p>`;
+      let html = '';
+      if (kids.length) {
+        html += `<div class="grid">${kids.map(categoryCard).join('')}
+          <button class="card add" id="addSub"><div class="face">+</div><div class="label"><b>Nouveau sous-thème</b></div></button></div>`;
+      }
+      if (useGroups) {
+        html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${groups.map(subCard).join('')}</div>
+          <p class="hint" style="text-align:center;margin-top:16px">Les objets sont rangés par ${esc(fieldName)}. Tu peux changer ça avec le bouton « ↕ Trier ».</p>`;
+      } else if (list.length) {
+        html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${list.map(itemCard).join('')}</div>`;
+      } else if (!kids.length) {
+        html += `<p class="empty">Aucun objet pour l’instant.<br>Appuie sur le bouton + pour en ajouter un.<br><br>
+          <button class="btn" id="addSub2" style="max-width:280px">➕ Créer un sous-thème ici</button></p>`;
+      }
+      $('#results').innerHTML = html;
+      $('#addSub')?.addEventListener('click', () => categoryForm(null, cat.id));
+      $('#addSub2')?.addEventListener('click', () => categoryForm(null, cat.id));
     };
     $('#search').oninput = draw;
     draw();
@@ -501,8 +610,10 @@
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       <h2>${esc(x.name)}</h2>
       <div class="fields">
-        ${field('Catégorie', `${cat.icon || ''} ${cat.name || ''}`)}
+        ${field('Catégorie', `${cat.icon || ''} ${pathName(cat)}`)}
         ${field('Propriétaire', x.owner)}
+        ${field('Type', x.team_type)}
+        ${field(x.team_type === 'Club' ? 'Club' : x.team_type === 'Équipe nationale' ? 'Pays' : 'Équipe', x.team)}
         ${field('Console', x.platform)}
         ${field('Marque', x.brand)}
         ${field('Année', x.year)}
@@ -572,8 +683,8 @@
         <p class="hint">La photo est réduite automatiquement pour prendre très peu de place.</p>
         <label>Nom *</label><input name="name" required value="${esc(x?.name)}" placeholder="Ex. : Super Mario 64">
         <label>Catégorie</label>
-        <select name="category_id">${categories.map((c) => `<option value="${c.id}" ${c.id === catId ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
-        <div class="row" id="dyn"></div>
+        <select name="category_id">${treeList().map(({ c, depth }) => `<option value="${c.id}" ${c.id === catId ? 'selected' : ''}>${'\u00a0\u00a0\u00a0'.repeat(depth)}${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
+        <div id="dyn"></div>
         <div class="row">
           <div><label>Année</label><input name="year" inputmode="numeric" value="${esc(x ? x.year : prefill.year)}" placeholder="Ex. : 1996"></div>
           <div><label>Tarif (€)</label><input name="estimated_value" inputmode="decimal" value="${esc(x?.estimated_value)}" placeholder="Ex. : 25"></div>
@@ -603,11 +714,23 @@
       const prev = $('#dyn').innerHTML ? Object.fromEntries(new FormData($('#f'))) : null;
       const platform = prev ? otherValue(prev, 'platform') : (x ? x.platform : prefill.platform);
       const brand = prev ? otherValue(prev, 'brand') : (x ? x.brand : prefill.brand);
+      const teamType = prev ? prev.team_type : (x ? x.team_type : prefill.team_type);
+      const team = prev ? otherValue(prev, 'team') : (x ? x.team : prefill.team);
       const showPlatform = kind === 'jeux' || kind === 'consoles' || platform;
+      const showTeam = kind === 'sport' || teamType || team;
+      const teams = teamType === 'Club' ? CLUBS : teamType === 'Équipe nationale' ? NATIONAL_TEAMS : [...NATIONAL_TEAMS, ...CLUBS];
       $('#dyn').innerHTML = `
-        ${showPlatform ? `<div><label>Console</label>${selectOther('platform', withUsed(PLATFORMS, 'platform'), platform, 'Nom de la console')}</div>` : ''}
-        <div><label>Marque</label>${selectOther('brand', withUsed(brandsFor(kind), 'brand'), brand, 'Nom de la marque')}</div>`;
+        ${showTeam ? `<div class="row">
+          <div><label>Type</label><select name="team_type"><option value="">Choisir…</option>${TEAM_TYPES.map((t) => `<option ${t === teamType ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+          <div><label>${teamType === 'Club' ? 'Club' : teamType === 'Équipe nationale' ? 'Pays' : 'Pays ou club'}</label>${selectOther('team', withUsed(teams, 'team'), team, 'Nom de l’équipe')}</div>
+        </div>` : ''}
+        <div class="row">
+          ${showPlatform ? `<div><label>Console</label>${selectOther('platform', withUsed(PLATFORMS, 'platform'), platform, 'Nom de la console')}</div>` : ''}
+          <div><label>Marque</label>${selectOther('brand', withUsed(brandsFor(kind), 'brand'), brand, 'Nom de la marque')}</div>
+        </div>`;
       wireOther($('#dyn'));
+      const tt = $('#dyn [name=team_type]');
+      if (tt) tt.onchange = drawDyn;
     };
     drawDyn();
     $('[name=category_id]').onchange = drawDyn;
@@ -634,6 +757,7 @@
       const row = {
         name: fd.name.trim(), category_id: fd.category_id,
         platform: otherValue(fd, 'platform'), brand: otherValue(fd, 'brand'),
+        ...('team_type' in fd ? { team_type: fd.team_type || null, team: otherValue(fd, 'team') } : {}),
         year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: otherValue(fd, 'owner'), quantity: Math.max(1, parseInt(fd.quantity, 10) || 1),
         condition: fd.condition || null, purchase_price: numOrNull(fd.purchase_price),
         location: otherValue(fd, 'location'), acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
@@ -656,9 +780,10 @@
   }
 
   // ---------- Formulaire catégorie ----------
-  function categoryForm(cat = null) {
+  function categoryForm(cat = null, parentId = null) {
     let icon = cat?.icon || '📦', color = cat?.color || COLORS[0], shape = cat?.shape || 'classique';
-    openModal(`<h3>${cat ? 'Modifier la catégorie' : 'Nouvelle catégorie'}</h3>
+    const parent = parentId && categories.find((c) => c.id === parentId);
+    openModal(`<h3>${cat ? 'Modifier' : parent ? `Nouveau sous-thème dans « ${esc(parent.name)} »` : 'Nouvelle catégorie'}</h3>
       <form id="f">
         <label>Nom *</label><input name="name" required value="${esc(cat?.name)}" placeholder="Ex. : Figurines">
         <label>Forme de la carte</label>
@@ -687,20 +812,26 @@
       $('#save').disabled = true;
       try {
         const row = { name, icon, color, shape };
-        if (!cat) row.position = categories.length;
+        if (!cat) row.position = childrenOf(parentId).length;
+        if (!cat && parentId) row.parent_id = parentId;
         const q = cat ? sb.from('collection_categories').update(row).eq('id', cat.id) : sb.from('collection_categories').insert(row);
         const { data, error } = await q.select().single();
-        if (error) throw error;
+        if (error) {
+          if (/parent_id/.test(error.message || '')) throw new Error('il manque une petite mise à jour dans Supabase pour les sous-thèmes (voir le message de Claude)');
+          throw error;
+        }
         categories = cat ? categories.map((c) => (c.id === data.id ? data : c)) : [...categories, data];
         closeModal();
-        toast(cat ? 'Catégorie modifiée' : 'Catégorie créée');
+        toast(cat ? 'Modifié' : parent ? 'Sous-thème créé' : 'Catégorie créée');
         cat ? route() : go(`#/c/${data.id}`);
       } catch (err) { fail(err); $('#save').disabled = false; }
     };
   }
 
-  function categoryMenu(cat, group = null, groupName = '') {
-    const n = items.filter((x) => x.category_id === cat.id).length;
+  function categoryMenu(cat, path = [], groupName = '') {
+    const group = path.length ? path.join('/') : null;
+    const n = countOf(itemsUnder(cat.id));
+    const nSub = subtreeIds(cat.id).size - 1;
     const hasImg = group && groupImageUrl(cat.id, group);
     openModal(`<h3>${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
       <div class="stack">
@@ -709,12 +840,14 @@
         ${hasImg ? '<button class="btn" id="gReset">Enlever l’image de cette carte</button>' : ''}
         <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">` : ''}
         <button class="btn" id="editCat">✏️ Nom, forme, icône, couleur</button>
+        <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
-        <button class="btn danger" id="delCat">Supprimer la catégorie${n ? ` et ses ${plural(n, 'objet')}` : ''}</button>
+        <button class="btn danger" id="delCat">Supprimer « ${esc(cat.name)} »${nSub ? ` et ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` (${plural(n, 'objet')})` : ''}</button>
         <button class="btn" id="cancel">Fermer</button>
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    $('#addSubM').onclick = () => categoryForm(null, cat.id);
     $('#look').onclick = lookMenu;
     if (group) {
       const done = () => { closeModal(); toast('Image de la carte changée'); };
@@ -739,15 +872,16 @@
       if (hasImg) $('#gReset').onclick = async () => { try { await setGroupImage(cat.id, group, null); closeModal(); toast('Image enlevée'); } catch (err) { fail(err); } };
     }
     $('#delCat').onclick = async () => {
-      if (!confirm(n ? `Supprimer « ${cat.name} » et ses ${plural(n, 'objet')} ? C’est définitif.` : `Supprimer « ${cat.name} » ?`)) return;
+      if (!confirm(n || nSub ? `Supprimer « ${cat.name} »${nSub ? `, ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` et ${plural(n, 'objet')}` : ''} ? C’est définitif.` : `Supprimer « ${cat.name} » ?`)) return;
       try {
-        const photos = items.filter((x) => x.category_id === cat.id).map((x) => x.photo_path);
+        const ids = subtreeIds(cat.id);
+        const photos = items.filter((x) => ids.has(x.category_id)).map((x) => x.photo_path);
         const { error } = await sb.from('collection_categories').delete().eq('id', cat.id);
         if (error) throw error;
         removeFiles(photos);
-        categories = categories.filter((c) => c.id !== cat.id);
-        items = items.filter((x) => x.category_id !== cat.id);
-        closeModal(); toast('Catégorie supprimée'); go('#/');
+        categories = categories.filter((c) => !ids.has(c.id));
+        items = items.filter((x) => !ids.has(x.category_id));
+        closeModal(); toast('Supprimé'); go(cat.parent_id ? `#/c/${cat.parent_id}` : '#/');
       } catch (err) { fail(err); }
     };
   }
@@ -875,23 +1009,35 @@
   function route() {
     if (!user) return renderAuth();
     window.scrollTo(0, 0);
-    const [, type, id, group] = location.hash.split('/');
-    if (type === 'c') renderCategory(id, group ? decodeURIComponent(group) : null);
+    const [, type, id, ...rest] = location.hash.split('/');
+    if (type === 'c') renderCategory(id, rest.filter(Boolean).map(decodeURIComponent));
     else if (type === 'i') renderItem(id);
     else renderHome();
   }
 
   backBtn.onclick = () => {
-    const [, type, id, group] = location.hash.split('/');
+    const [, type, id, ...rest] = location.hash.split('/');
+    const path = rest.filter(Boolean);
     if (type === 'i') {
       const x = items.find((i) => i.id === id);
       if (!x) return go('#/');
       const cat = categories.find((c) => c.id === x.category_id);
-      const field = groupField(cat);
-      const hasGroups = field !== 'none' && (field === 'platform' || items.some((i) => i.category_id === x.category_id && groupOf(i, field) !== NONE));
-      return go(hasGroups ? groupLink(x.category_id, groupOf(x, field)) : `#/c/${x.category_id}`);
+      // Revient dans la sous-carte où se trouve l'objet
+      const chain = groupChain(cat);
+      const p = [];
+      for (const f of chain) {
+        const pool = items.filter((i) => i.category_id === x.category_id && p.every((g, k) => groupOf(i, chain[k]) === g));
+        const hasGroups = ['platform', 'team_type'].includes(f) || pool.some((i) => groupOf(i, f) !== NONE);
+        if (!hasGroups) break;
+        p.push(groupOf(x, f));
+      }
+      return go(p.length ? groupLink(x.category_id, p) : `#/c/${x.category_id}`);
     }
-    if (type === 'c' && group) return go(`#/c/${id}`);
+    if (type === 'c' && path.length) return go(path.length > 1 ? groupLink(id, path.slice(0, -1).map(decodeURIComponent)) : `#/c/${id}`);
+    if (type === 'c') {
+      const cat = categories.find((c) => c.id === id);
+      if (cat?.parent_id) return go(`#/c/${cat.parent_id}`);
+    }
     go('#/');
   };
   window.addEventListener('hashchange', route);

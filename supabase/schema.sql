@@ -99,3 +99,6 @@ alter table public.collection_items add column if not exists acquired_on date;
 alter table public.collection_settings add column if not exists group_images jsonb not null default '{}'::jsonb;
 alter table public.collection_items add column if not exists quantity int not null default 1;
 alter table public.collection_settings add column if not exists view_prefs jsonb not null default '{}'::jsonb;
+alter table public.collection_categories add column if not exists parent_id uuid references public.collection_categories(id) on delete cascade;
+alter table public.collection_items add column if not exists team_type text;
+alter table public.collection_items add column if not exists team text;
