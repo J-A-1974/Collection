@@ -497,7 +497,8 @@
     const url = x.photo_path && urlCache.get(x.photo_path);
     const field = (label, value, wide) => (value || value === 0 ? `<div class="${wide ? 'wide' : ''}"><span>${label}</span>${esc(value)}</div>` : '');
     app.innerHTML = `<div class="detail">
-      <div class="hero card shape-${esc(cat.shape || 'classique')}">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}</div>
+      <div class="hero card shape-${esc(cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}</div>
+      ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       <h2>${esc(x.name)}</h2>
       <div class="fields">
         ${field('Catégorie', `${cat.icon || ''} ${cat.name || ''}`)}
@@ -517,6 +518,7 @@
         <button class="btn primary" id="edit">Modifier</button>
         <button class="btn danger" id="del">Supprimer</button>
       </div></div>`;
+    if (url) $('#hero').onclick = () => showPhoto(url, x.name);
     $('#edit').onclick = () => itemForm(x);
     $('#del').onclick = async () => {
       if (!confirm(`Supprimer « ${x.name} » ?`)) return;
@@ -527,6 +529,32 @@
         items = items.filter((i) => i.id !== x.id);
         toast('Objet supprimé');
         go(`#/c/${x.category_id}`);
+      } catch (e) { fail(e); }
+    };
+  }
+
+  // Photo en plein écran : appui long sur l'image = menu du téléphone (télécharger), ou bouton Télécharger
+  function showPhoto(url, name) {
+    const box = document.createElement('div');
+    box.className = 'lightbox';
+    box.innerHTML = `<img src="${esc(url)}" alt="${esc(name)}">
+      <div class="lb-bar"><button class="btn" id="lbDl">⬇️ Télécharger</button><button class="btn" id="lbClose">✕ Fermer</button></div>`;
+    document.body.appendChild(box);
+    const close = () => { box.remove(); window.removeEventListener('popstate', close); };
+    history.pushState({ photo: 1 }, '');
+    window.addEventListener('popstate', close);
+    box.querySelector('#lbClose').onclick = () => history.back();
+    box.onclick = (e) => { if (e.target === box) history.back(); };
+    box.querySelector('#lbDl').onclick = async () => {
+      try {
+        const blob = await (await fetch(url)).blob();
+        const ext = blob.type.includes('png') ? 'png' : blob.type.includes('jpeg') ? 'jpg' : 'webp';
+        const file = `${(name || 'photo').replace(/[^\p{L}\p{N} _-]+/gu, '').trim() || 'photo'}.${ext}`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = file;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        toast('Photo téléchargée');
       } catch (e) { fail(e); }
     };
   }
