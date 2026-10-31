@@ -85,8 +85,25 @@
   };
   const otherValue = (fd, name) => (fd[name] === '__autre' ? (fd[name + '__autre'] || '').trim() : fd[name]) || null;
   const CONDITIONS = ['Neuf (sous blister)', 'Très bon', 'Bon', 'Moyen', 'Abîmé'];
-  const EMOJIS = ['🎮', '🕹️', '👾', '🧸', '🦸', '🤖', '👕', '⚽', '🏀', '🎧', '🃏', '📀', '💿', '📼', '📚', '🚗', '🧩', '🏆', '🎲', '⌚', '👟', '🧢', '⚔️', '📦', '⭐'];
+  const EMOJI_GROUPS = [
+    ['Jeux et jouets', ['🎮', '🕹️', '👾', '🎰', '🧸', '🪀', '🪁', '🧩', '🎲', '♟️', '🃏', '🀄', '🎴', '🪅', '🪆', '🤖', '🦸', '🦹', '🧙', '🧌', '👸', '🦖', '🦄', '🐉', '🚂', '🚗', '🏎️', '🚓', '🚒', '🚜', '✈️', '🚀', '🛸', '⛵', '🏰']],
+    ['Sport', ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🏓', '🏸', '🥊', '⛳', '🏒', '🎿', '🛹', '🚲', '🏁', '👕', '🎽', '👟', '🧢', '🏆', '🥇', '🏅', '🎖️']],
+    ['Pins, badges, objets', ['📌', '📍', '🔘', '🎗️', '💎', '💍', '👑', '⌚', '🕶️', '👜', '🎒', '🔑', '🗝️', '🪙', '💰', '🧲', '🔮', '🏺', '🗿', '🎁', '📦', '🧳', '🖼️', '🪞']],
+    ['Musique, films, livres', ['🎧', '🎵', '🎸', '🎹', '🥁', '🎺', '🎻', '🎤', '📻', '📀', '💿', '📼', '📺', '📷', '📸', '🎥', '🎬', '🎞️', '📚', '📖', '📰', '✉️', '📮', '🗺️']],
+    ['Divers', ['⭐', '🌟', '✨', '🔥', '💥', '❤️', '💙', '💚', '💛', '💜', '🖤', '🍀', '🌈', '☀️', '🌙', '⚡', '❄️', '🌸', '🐱', '🐶', '🦁', '🐼', '🦊', '🐸', '🍕', '🍔', '🍭', '🍩', '☕', '🍷', '⚔️', '🛡️', '🧪', '💡', '🔧', '🧵']],
+  ];
+  const EMOJIS = EMOJI_GROUPS.flatMap((g) => g[1]);
   const COLORS = ['#6366f1', '#ec4899', '#10b981', '#8b5cf6', '#f59e0b', '#0ea5e9', '#ef4444', '#14b8a6', '#64748b', '#ff3d9a', '#29e6ff', '#7cff6b'];
+  const VIVID_COLORS = ['#ffe600', '#76ff03', '#00e676', '#00b0ff', '#2979ff', '#ff1744', '#ff9100', '#ff4081', '#d500f9', '#1de9b6', '#ffffff', '#111111'];
+  const GRADIENTS = ['grad:#ff512f,#f09819', 'grad:#ff1744,#ff9100,#ffe600,#00e676,#00b0ff,#d500f9', 'grad:#00c6ff,#0072ff', 'grad:#00e676,#00b0ff',
+    'grad:#ff4081,#7c4dff', 'grad:#ff1744,#ffe600', 'grad:#1de9b6,#2979ff', 'grad:#d500f9,#2979ff,#00e5ff', 'grad:#ffe600,#76ff03', 'grad:#ff9a8b,#ff6a88,#ff99ac',
+    'grad:#f7971e,#ffd200', 'grad:#8e2de2,#ff4081,#ffb800'];
+  // Fond d'une carte : couleur unie (légèrement dégradée) ou mélange de couleurs
+  function colorBg(c) {
+    if (String(c).startsWith('grad:')) return `linear-gradient(135deg, ${c.slice(5)})`;
+    if (VIVID_COLORS.includes(c)) return `linear-gradient(160deg, ${c} 45%, ${shade(c, 0.85)})`;
+    return `linear-gradient(160deg, ${c}, ${shade(c)})`;
+  }
 
   // Logo par défaut (créé pour l'appli), remplaçable par l'image de son choix
   const DEFAULT_LOGO = `<svg viewBox="0 0 360 110" xmlns="http://www.w3.org/2000/svg" aria-label="Ma Collection">
@@ -234,6 +251,10 @@
     if (i.error) throw i.error;
     categories = c.data; items = i.data;
     settings = s.data || { theme: 'synthwave' };
+    if (settings.view_prefs && Object.keys(settings.view_prefs).length) {
+      prefs = settings.view_prefs;
+      try { localStorage.setItem('viewPrefs', JSON.stringify(prefs)); } catch {}
+    }
     if (!categories.length) {
       const { data, error } = await sb.from('collection_categories').insert(DEFAULT_CATEGORIES.map((d, n) => ({ ...d, position: n }))).select();
       if (error) throw error;
@@ -250,7 +271,7 @@
 
   // Une carte : la forme (cartouche, maillot…) avec la photo ou l'icône, et le texte dessous
   function faceHtml(shape, color, url, icon) {
-    const style = url ? `background-image:url('${esc(url)}')` : `background:linear-gradient(160deg, ${esc(color)}, ${esc(shade(color))})`;
+    const style = url ? `background-image:url('${esc(url)}')` : `background:${esc(colorBg(color))}`;
     return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${esc(icon)}</span>`}</div>`;
   }
   // Couleur d'une sous-carte selon la famille de console ou la marque
@@ -264,15 +285,66 @@
     let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     return COLORS[h % COLORS.length];
   }
-  const groupField = (cat) => (['jeux', 'consoles'].includes(kindOf(cat)) ? 'platform' : 'brand');
+  // ---------- Tri et classement choisis par l'utilisateur ----------
+  let prefs = {};
+  try { prefs = JSON.parse(localStorage.getItem('viewPrefs') || '{}'); } catch {}
+  const catPrefs = (catId) => ({ group: 'auto', groupSort: 'defaut', itemSort: 'recent', ...(prefs[catId] || {}) });
+  async function savePrefs(key, patch) {
+    prefs = { ...prefs, [key]: { ...(prefs[key] || {}), ...patch } };
+    try { localStorage.setItem('viewPrefs', JSON.stringify(prefs)); } catch {}
+    if ('view_prefs' in settings) settings.view_prefs = prefs;
+    // Copie dans Supabase pour la retrouver sur un autre appareil (ignorée si la colonne n'existe pas encore)
+    try { await sb.from('collection_settings').upsert({ user_id: user.id, view_prefs: prefs }); } catch {}
+  }
+  const GROUP_FIELDS = [
+    ['auto', 'Automatique (console ou marque)'], ['platform', 'Console'], ['brand', 'Marque'], ['owner', 'Propriétaire'],
+    ['location', 'Lieu'], ['year', 'Année'], ['condition', 'État'], ['price', 'Tarif'], ['letter', 'Première lettre du nom'], ['none', 'Pas de sous-cartes'],
+  ];
+  const GROUP_SORTS = [['defaut', 'Ordre actuel'], ['az', 'A → Z'], ['za', 'Z → A'], ['plus', 'Plus d’objets d’abord'], ['moins', 'Moins d’objets d’abord']];
+  const ITEM_SORTS = [['recent', 'Ajoutés récemment'], ['ancien', 'Ajoutés en premier'], ['az', 'Nom A → Z'], ['za', 'Nom Z → A'],
+    ['prix_asc', 'Tarif croissant'], ['prix_desc', 'Tarif décroissant'], ['annee_asc', 'Année croissante'], ['annee_desc', 'Année décroissante']];
+  const HOME_SORTS = [['manuel', 'Ordre actuel'], ['az', 'A → Z'], ['za', 'Z → A'], ['plus', 'Plus d’objets d’abord'], ['moins', 'Moins d’objets d’abord']];
+  const PRICE_RANGES = ['Moins de 10 €', '10 à 50 €', '50 à 100 €', '100 à 500 €', 'Plus de 500 €'];
+  const cmpText = (a, b) => String(a).localeCompare(String(b), 'fr', { numeric: true, sensitivity: 'base' });
+  function sortItems(list, how) {
+    const l = [...list];
+    const num = (v, dflt) => (v == null || v === '' ? dflt : Number(v));
+    const by = {
+      recent: (a, b) => cmpText(b.created_at, a.created_at),
+      ancien: (a, b) => cmpText(a.created_at, b.created_at),
+      az: (a, b) => cmpText(a.name, b.name),
+      za: (a, b) => cmpText(b.name, a.name),
+      prix_asc: (a, b) => num(a.estimated_value, Infinity) - num(b.estimated_value, Infinity),
+      prix_desc: (a, b) => num(b.estimated_value, -Infinity) - num(a.estimated_value, -Infinity),
+      annee_asc: (a, b) => num(a.year, Infinity) - num(b.year, Infinity),
+      annee_desc: (a, b) => num(b.year, -Infinity) - num(a.year, -Infinity),
+    }[how];
+    return by ? l.sort(by) : l;
+  }
+
+  const autoField = (cat) => (['jeux', 'consoles'].includes(kindOf(cat)) ? 'platform' : 'brand');
+  const groupField = (cat) => { const g = catPrefs(cat?.id).group; return g === 'auto' ? autoField(cat) : g; };
   const NONE = '__aucun';
-  const groupOf = (x, field) => x[field] || NONE;
+  function groupOf(x, field) {
+    if (field === 'none') return NONE;
+    if (field === 'letter') { const c = (x.name || '').trim().charAt(0).toUpperCase(); return c ? c.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : NONE; }
+    if (field === 'price') {
+      const v = x.estimated_value;
+      if (v == null || v === '') return NONE;
+      return v < 10 ? PRICE_RANGES[0] : v < 50 ? PRICE_RANGES[1] : v < 100 ? PRICE_RANGES[2] : v < 500 ? PRICE_RANGES[3] : PRICE_RANGES[4];
+    }
+    const v = x[field];
+    return v == null || v === '' ? NONE : String(v);
+  }
+  const NONE_LABELS = { platform: 'Sans console', brand: 'Sans marque', owner: 'Sans propriétaire', location: 'Sans lieu', year: 'Sans année',
+    condition: 'Sans état', price: 'Sans tarif', letter: 'Sans nom' };
+  const groupLabel = (g, field) => (g === NONE ? NONE_LABELS[field] || 'Autres' : g);
   const groupLink = (catId, g) => `#/c/${catId}/${encodeURIComponent(g)}`;
 
-  function shade(hex) {
+  function shade(hex, k = 0.6) {
     const n = parseInt(String(hex).replace('#', ''), 16);
     if (Number.isNaN(n)) return '#1b1435';
-    const f = (v) => Math.max(0, Math.round(v * 0.45));
+    const f = (v) => Math.max(0, Math.round(v * k));
     return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
   }
 
@@ -303,16 +375,24 @@
         <div><b>${categories.length}</b><span>catégories</span></div>
         <div><b>${total ? money(total) : '–'}</b><span>valeur totale</span></div>
       </div>
-      <input class="search" id="search" type="search" placeholder="🔍 Rechercher dans toute la collection">
+      <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans toute la collection">
+        <button class="sort-btn" id="sortBtn">↕ Trier</button></div>
       <div id="results"></div>`;
+    $('#sortBtn').onclick = () => sortMenu('Trier les cartes', [['sort', 'Ordre des cartes', HOME_SORTS]], { sort: prefs.home?.sort || 'manuel' }, (p) => savePrefs('home', p));
     const draw = () => {
       const q = $('#search').value.trim().toLowerCase();
       if (q) {
-        const found = items.filter((x) => matches(x, q));
+        const found = sortItems(items.filter((x) => matches(x, q)), 'az');
         $('#results').innerHTML = found.length ? `<div class="grid">${found.map(itemCard).join('')}</div>` : '<p class="empty">Aucun résultat</p>';
         return;
       }
-      $('#results').innerHTML = `<div class="grid">${categories.map(categoryCard).join('')}
+      const hs = prefs.home?.sort || 'manuel';
+      const cnt = (c) => countOf(items.filter((x) => x.category_id === c.id));
+      const cats = [...categories].sort({
+        az: (a, b) => cmpText(a.name, b.name), za: (a, b) => cmpText(b.name, a.name),
+        plus: (a, b) => cnt(b) - cnt(a), moins: (a, b) => cnt(a) - cnt(b),
+      }[hs] || (() => 0));
+      $('#results').innerHTML = `<div class="grid">${cats.map(categoryCard).join('')}
         <button class="card add" id="addCat"><div class="face">+</div><div class="label"><b>Nouvelle catégorie</b></div></button></div>`;
       $('#addCat').onclick = () => categoryForm();
     };
@@ -323,19 +403,27 @@
   function renderCategory(id, group = null) {
     const cat = categories.find((c) => c.id === id);
     if (!cat) return go('#/');
+    const cp = catPrefs(cat.id);
     const field = groupField(cat);
     const all = items.filter((x) => x.category_id === id);
-    // Les sous-cartes : celles proposées d'office (jeux et consoles) + celles déjà utilisées
-    const used = [...new Set(all.map((x) => x[field]).filter(Boolean))];
+    // Les sous-cartes : celles proposées d'office (consoles des jeux vidéo) + celles déjà utilisées
+    const used = [...new Set(all.map((x) => groupOf(x, field)))].filter((g) => g !== NONE);
     const preset = field === 'platform' ? FEATURED_PLATFORMS : [];
-    const groups = [...preset, ...used.filter((v) => !preset.includes(v)).sort((a, b) => a.localeCompare(b, 'fr'))];
-    if (all.some((x) => !x[field])) groups.push(NONE);
-    const useGroups = !group && (preset.length || used.length);
-    const list = group ? all.filter((x) => groupOf(x, field) === group) : all;
-    const groupName = group === NONE ? (field === 'platform' ? 'Sans console' : 'Sans marque') : group;
+    const extra = used.filter((v) => !preset.includes(v));
+    extra.sort(field === 'price' ? (a, b) => PRICE_RANGES.indexOf(a) - PRICE_RANGES.indexOf(b) : cmpText);
+    let groups = [...preset, ...extra];
+    const countIn = (g) => countOf(all.filter((x) => groupOf(x, field) === g));
+    if (cp.groupSort === 'az') groups.sort(cmpText);
+    if (cp.groupSort === 'za') groups.sort((a, b) => cmpText(b, a));
+    if (cp.groupSort === 'plus') groups.sort((a, b) => countIn(b) - countIn(a));
+    if (cp.groupSort === 'moins') groups.sort((a, b) => countIn(a) - countIn(b));
+    if (all.some((x) => groupOf(x, field) === NONE)) groups.push(NONE);
+    const useGroups = !group && field !== 'none' && (preset.length || used.length);
+    const list = sortItems(group ? all.filter((x) => groupOf(x, field) === group) : all, cp.itemSort);
+    const groupName = group ? groupLabel(group, field) : '';
 
     setHeader({ back: true });
-    const prefill = group && group !== NONE ? { [field]: group } : {};
+    const prefill = group && group !== NONE && ['platform', 'brand', 'owner', 'location', 'year', 'condition'].includes(field) ? { [field]: group } : {};
     fab.onclick = () => itemForm(null, cat.id, prefill);
     menuBtn.onclick = () => categoryMenu(cat, group, groupName);
     const total = valueOf(list);
@@ -345,11 +433,17 @@
         <div><b>${countOf(list)}</b><span>objets</span></div>
         <div><b>${total ? money(total) : '–'}</b><span>valeur</span></div>
       </div>
-      <input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(group ? groupName : cat.name)}">
+      <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(group ? groupName : cat.name)}">
+        <button class="sort-btn" id="sortBtn">↕ Trier</button></div>
       <div id="results"></div>`;
+    $('#sortBtn').onclick = () => sortMenu(`Trier et classer « ${cat.name} »`, [
+      ['group', 'Ranger les objets en sous-cartes par', GROUP_FIELDS],
+      ['groupSort', 'Ordre des sous-cartes', GROUP_SORTS],
+      ['itemSort', 'Ordre des objets', ITEM_SORTS],
+    ], cp, (p) => savePrefs(cat.id, p), () => { if (group) go(`#/c/${cat.id}`); });
     const subCard = (g) => {
-      const n = countOf(all.filter((x) => groupOf(x, field) === g));
-      const label = g === NONE ? (field === 'platform' ? 'Sans console' : 'Sans marque') : g;
+      const n = countIn(g);
+      const label = groupLabel(g, field);
       const color = g === NONE ? '#475569' : groupColor(g);
       const img = groupImageUrl(cat.id, g);
       const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
@@ -358,21 +452,40 @@
         <div class="face" style="${bg}"><span class="tag" style="--fs:${size}">${esc(label)}</span></div>
         <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
     };
+    const fieldName = (GROUP_FIELDS.find((f) => f[0] === field)?.[1] || '').toLowerCase();
     const draw = () => {
       const q = $('#search').value.trim().toLowerCase();
       if (useGroups && !q) {
         $('#results').innerHTML = `<div class="grid">${groups.map(subCard).join('')}</div>
-          <p class="hint" style="text-align:center;margin-top:16px">${field === 'platform'
-            ? 'Quand tu choisis la console d’un objet, il se range tout seul dans la bonne carte.'
-            : 'Quand tu choisis la marque d’un objet, il se range tout seul dans la bonne carte.'}</p>`;
+          <p class="hint" style="text-align:center;margin-top:16px">Les objets sont rangés par ${esc(fieldName)}. Tu peux changer ça avec le bouton « ↕ Trier ».</p>`;
         return;
       }
-      const found = q ? list.filter((x) => matches(x, q)) : list;
+      const found = q ? sortItems(all.filter((x) => matches(x, q)), cp.itemSort) : list;
       $('#results').innerHTML = found.length ? `<div class="grid">${found.map(itemCard).join('')}</div>`
         : `<p class="empty">${q ? 'Aucun résultat' : 'Aucun objet pour l’instant.<br>Appuie sur le bouton + pour en ajouter un.'}</p>`;
     };
     $('#search').oninput = draw;
     draw();
+  }
+
+  // Fenêtre de tri : une liste de choix par réglage
+  function sortMenu(title, sections, current, onSave, after) {
+    const state = { ...current };
+    openModal(`<h3>${esc(title)}</h3>
+      ${sections.map(([key, label, opts]) => `<div class="lbl">${label}</div>
+        <div class="chips">${opts.map(([v, l]) => `<button type="button" data-k="${key}" data-v="${v}" class="${state[key] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`).join('')}
+      <div class="actions"><button class="btn" id="cancel">Annuler</button><button class="btn primary" id="ok">Appliquer</button></div>`);
+    modalBody.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => {
+      state[b.dataset.k] = b.dataset.v;
+      modalBody.querySelectorAll(`[data-k="${b.dataset.k}"]`).forEach((o) => o.classList.toggle('on', o === b));
+    }));
+    $('#cancel').onclick = closeModal;
+    $('#ok').onclick = async () => {
+      closeModal();
+      onSave(state);
+      if (after) after();
+      route();
+    };
   }
 
   function renderItem(id) {
@@ -434,20 +547,20 @@
         <select name="category_id">${categories.map((c) => `<option value="${c.id}" ${c.id === catId ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
         <div class="row" id="dyn"></div>
         <div class="row">
-          <div><label>Année</label><input name="year" inputmode="numeric" value="${esc(x?.year)}" placeholder="Ex. : 1996"></div>
+          <div><label>Année</label><input name="year" inputmode="numeric" value="${esc(x ? x.year : prefill.year)}" placeholder="Ex. : 1996"></div>
           <div><label>Tarif (€)</label><input name="estimated_value" inputmode="decimal" value="${esc(x?.estimated_value)}" placeholder="Ex. : 25"></div>
         </div>
         <div class="row">
           <div><label>Quantité</label><div class="stepper"><button type="button" data-q="-1">−</button><input name="quantity" inputmode="numeric" value="${x ? qty(x) : 1}"><button type="button" data-q="1">+</button></div></div>
-          <div><label>Propriétaire</label>${selectOther('owner', withUsed(OWNERS, 'owner'), x?.owner, 'Nom')}</div>
+          <div><label>Propriétaire</label>${selectOther('owner', withUsed(OWNERS, 'owner'), x ? x.owner : prefill.owner, 'Nom')}</div>
         </div>
         <div class="row">
-          <div><label>Lieu</label>${selectOther('location', withUsed(PLACES, 'location'), x?.location, 'Nom du lieu')}</div>
+          <div><label>Lieu</label>${selectOther('location', withUsed(PLACES, 'location'), x ? x.location : prefill.location, 'Nom du lieu')}</div>
           <div><label>Obtenu le</label><input name="acquired_on" type="date" value="${esc(x?.acquired_on)}"></div>
         </div>
         <details ${x?.condition || x?.purchase_price || x?.notes ? 'open' : ''}><summary>Plus de détails (facultatif)</summary>
           <div class="row">
-            <div><label>État</label><select name="condition"><option value=""></option>${CONDITIONS.map((c) => `<option ${c === x?.condition ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+            <div><label>État</label><select name="condition"><option value=""></option>${CONDITIONS.map((c) => `<option ${c === (x ? x.condition : prefill.condition) ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
             <div><label>Prix d’achat (€)</label><input name="purchase_price" inputmode="decimal" value="${esc(x?.purchase_price)}"></div>
           </div>
           <label>Notes</label><textarea name="notes" rows="3">${esc(x?.notes)}</textarea>
@@ -522,9 +635,11 @@
         <label>Nom *</label><input name="name" required value="${esc(cat?.name)}" placeholder="Ex. : Figurines">
         <label>Forme de la carte</label>
         <div class="shapes">${SHAPES.map(([k, l]) => `<button type="button" data-s="${k}" class="${k === shape ? 'on' : ''}">
-          <div class="card shape-${k}"><div class="face" style="background:${color}"></div></div>${l}</button>`).join('')}</div>
-        <label>Icône</label><div class="emojis">${EMOJIS.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${e}</button>`).join('')}</div>
-        <label>Couleur</label><div class="colors">${COLORS.map((c) => `<button type="button" data-c="${c}" style="background:${c}" class="${c === color ? 'on' : ''}"></button>`).join('')}</div>
+          <div class="card shape-${k}"><div class="face" style="background:${esc(colorBg(color))}"></div></div>${l}</button>`).join('')}</div>
+        <label>Icône</label>${EMOJI_GROUPS.map(([t, list]) => `<div class="hint">${t}</div>
+          <div class="emojis">${list.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${e}</button>`).join('')}</div>`).join('')}
+        <label>Couleur</label>${[['Classiques', COLORS], ['Vives', VIVID_COLORS], ['Mélanges', GRADIENTS]].map(([t, list]) => `<div class="hint">${t}</div>
+          <div class="colors">${list.map((c) => `<button type="button" data-c="${c}" style="background:${colorBg(c)}" class="${c === color ? 'on' : ''}"></button>`).join('')}</div>`).join('')}
         <div class="actions"><button type="button" class="btn" id="cancel">Annuler</button><button class="btn primary" id="save">Enregistrer</button></div>
       </form>`);
     $('#cancel').onclick = closeModal;
@@ -536,7 +651,7 @@
     pick('e', (v) => (icon = v));
     pick('c', (v) => {
       color = v;
-      modalBody.querySelectorAll('.shapes .face').forEach((f) => (f.style.background = v));
+      modalBody.querySelectorAll('.shapes .face').forEach((f) => (f.style.background = colorBg(v)));
     });
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
@@ -745,7 +860,7 @@
       if (!x) return go('#/');
       const cat = categories.find((c) => c.id === x.category_id);
       const field = groupField(cat);
-      const hasGroups = field === 'platform' || items.some((i) => i.category_id === x.category_id && i.brand);
+      const hasGroups = field !== 'none' && (field === 'platform' || items.some((i) => i.category_id === x.category_id && groupOf(i, field) !== NONE));
       return go(hasGroups ? groupLink(x.category_id, groupOf(x, field)) : `#/c/${x.category_id}`);
     }
     if (type === 'c' && group) return go(`#/c/${id}`);

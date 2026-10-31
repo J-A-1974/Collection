@@ -313,3 +313,13 @@ details summary { color: var(--accent); cursor: pointer; padding: 6px 0; }
 .sizes small { color: var(--muted); font-weight: 400; }
 .card, .card .label, .card .label b { min-width: 0; }
 .card .label b { overflow-wrap: anywhere; }
+
+/* Barre de recherche + tri */
+.searchbar { display: flex; gap: 8px; margin-bottom: 16px; }
+.searchbar .search { margin-bottom: 0; flex: 1; min-width: 0; }
+.sort-btn { flex: 0 0 auto; padding: 0 14px; border-radius: 12px; border: 1px solid var(--surface-2); background: var(--surface); color: var(--text); font-weight: 700; font-size: .9rem; cursor: pointer; backdrop-filter: blur(6px); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { padding: 8px 12px; border-radius: 99px; border: 1px solid var(--surface-2); background: var(--input); color: var(--text); font-size: .9rem; cursor: pointer; }
+.chips button.on { background: var(--accent); border-color: var(--accent); color: #200f00; font-weight: 700; }
+.colors button[data-c='#ffffff'] { box-shadow: inset 0 0 0 1px #bbb; }
+.emojis + .hint, .colors + .hint { margin-top: 10px; }
