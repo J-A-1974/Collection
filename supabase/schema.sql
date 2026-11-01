@@ -105,3 +105,4 @@ alter table public.collection_items add column if not exists team text;
 alter table public.collection_items add column if not exists player_name text;
 alter table public.collection_items add column if not exists shirt_number text;
 alter table public.collection_items add column if not exists shirt_version text;
+alter table public.collection_items add column if not exists shape text;

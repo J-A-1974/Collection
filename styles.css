@@ -392,3 +392,29 @@ body.light .card.worn .label b { color: #b8860b; }
 /* Image importée comme icône */
 .ico-img { display: inline-block; width: 1em; height: 1em; object-fit: contain; vertical-align: -0.12em; }
 .card .face .emoji .ico-img { width: 1.25em; height: 1.25em; border-radius: 8px; }
+
+/* Recadrage d'image */
+.crop-dlg { border: 0; border-radius: 18px; padding: 16px; background: var(--surface-solid, #1b1435); color: var(--text); max-width: 340px; width: calc(100% - 32px); }
+body.light .crop-dlg { background: #fff; }
+.crop-dlg::backdrop { background: rgba(5,2,15,.75); }
+.crop-dlg h3 { margin: 0 0 6px; }
+.crop-dlg canvas { display: block; margin: 8px auto; border-radius: 14px; cursor: grab; touch-action: none;
+  background: repeating-conic-gradient(#8884 0 25%, transparent 0 50%) 0 0 / 20px 20px; }
+.crop-zoom { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.crop-zoom input { flex: 1; accent-color: var(--accent); }
+.crop-quick { display: flex; gap: 8px; }
+.crop-quick .btn { flex: 1; margin: 0; padding: 8px; font-size: .85rem; }
+/* Arbre des cartes repliable */
+.tree-current { width: 100%; text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--surface-2); background: var(--input); color: var(--text);
+  font: inherit; font-size: 1rem; cursor: pointer; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tree-caret { margin-left: auto; opacity: .7; }
+.tree-box { margin-top: 6px; border: 1px solid var(--surface-2); border-radius: 12px; background: var(--input); max-height: 50vh; overflow: auto; padding: 4px; }
+.tree-row { display: flex; align-items: center; padding-left: calc(var(--d) * 20px); }
+.tree-row.on .tree-pick { background: var(--accent); color: #200f00; font-weight: 700; }
+.tree-arrow { flex: 0 0 34px; height: 34px; border: 0; background: none; color: var(--text); font-size: 1.1rem; cursor: pointer; transition: transform .15s; }
+.tree-arrow.open { transform: rotate(90deg); }
+.tree-pick { flex: 1; text-align: left; border: 0; background: none; color: var(--text); font: inherit; padding: 9px 8px; border-radius: 8px; cursor: pointer; }
+.tree-pick:active { background: var(--surface-2); }
+.tree-pick small { opacity: .6; }
+.shape-details { margin: 6px 0; }
+.shape-details summary { cursor: pointer; font-weight: 600; padding: 6px 0; }

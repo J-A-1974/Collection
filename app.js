@@ -221,6 +221,58 @@
     return blob;
   }
 
+  // Fenêtre pour recadrer / redimensionner une image avant l'envoi (carré, comme les cartes)
+  const cropDlg = document.createElement('dialog');
+  cropDlg.className = 'crop-dlg';
+  document.body.appendChild(cropDlg);
+  async function cropImage(file) {
+    if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '')) return file; // un SVG garde sa netteté
+    let img;
+    try { img = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch { img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
+    const V = 280; // taille de l'aperçu
+    const contain = Math.min(V / img.width, V / img.height), cover = Math.max(V / img.width, V / img.height);
+    let k = cover, x = (V - img.width * k) / 2, y = (V - img.height * k) / 2;
+    cropDlg.innerHTML = `<h3>Ajuster l’image</h3>
+      <p class="hint">Fais glisser l’image avec le doigt et règle la taille avec le curseur.</p>
+      <canvas id="cropCv" width="${V * 2}" height="${V * 2}" style="width:${V}px;height:${V}px"></canvas>
+      <div class="crop-zoom"><span>➖</span><input type="range" id="cropZ" min="0" max="1000" value="${Math.round(1000 * Math.log(cover / (contain * 0.6)) / Math.log((cover * 4) / (contain * 0.6)))}"><span>➕</span></div>
+      <div class="crop-quick"><button type="button" class="btn" id="cropFit">Image entière</button><button type="button" class="btn" id="cropFill">Remplir</button></div>
+      <div class="actions"><button type="button" class="btn" id="cropAsIs">Garder telle quelle</button><button type="button" class="btn primary" id="cropOk">Valider</button></div>`;
+    const cv = cropDlg.querySelector('#cropCv'), ctx = cv.getContext('2d');
+    const kMin = contain * 0.6, kMax = cover * 4;
+    const draw = () => {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = '#ffffff22'; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, x * 2, y * 2, img.width * k * 2, img.height * k * 2);
+    };
+    const zoomTo = (nk) => { const cx = V / 2, cy = V / 2; x = cx - (cx - x) * (nk / k); y = cy - (cy - y) * (nk / k); k = nk; draw(); };
+    const z = cropDlg.querySelector('#cropZ');
+    const sliderK = () => kMin * Math.pow(kMax / kMin, z.value / 1000);
+    const setSlider = () => { z.value = Math.round(1000 * Math.log(k / kMin) / Math.log(kMax / kMin)); };
+    z.oninput = () => zoomTo(sliderK());
+    cropDlg.querySelector('#cropFit').onclick = () => { k = contain; x = (V - img.width * k) / 2; y = (V - img.height * k) / 2; setSlider(); draw(); };
+    cropDlg.querySelector('#cropFill').onclick = () => { k = cover; x = (V - img.width * k) / 2; y = (V - img.height * k) / 2; setSlider(); draw(); };
+    let drag = null;
+    cv.style.touchAction = 'none';
+    cv.onpointerdown = (e) => { drag = { px: e.clientX, py: e.clientY, x, y }; cv.setPointerCapture(e.pointerId); };
+    cv.onpointermove = (e) => { if (!drag) return; x = drag.x + e.clientX - drag.px; y = drag.y + e.clientY - drag.py; draw(); };
+    cv.onpointerup = cv.onpointercancel = () => { drag = null; };
+    cv.onwheel = (e) => { e.preventDefault(); zoomTo(Math.min(kMax, Math.max(kMin, k * (e.deltaY < 0 ? 1.08 : 0.93)))); setSlider(); };
+    draw();
+    cropDlg.showModal();
+    return new Promise((resolve) => {
+      cropDlg.querySelector('#cropAsIs').onclick = () => { cropDlg.close(); resolve(file); };
+      cropDlg.querySelector('#cropOk').onclick = () => {
+        const OUT = 640, f = OUT / V;
+        const out = document.createElement('canvas'); out.width = OUT; out.height = OUT;
+        out.getContext('2d').drawImage(img, x * f, y * f, img.width * k * f, img.height * k * f);
+        out.toBlob((b) => { cropDlg.close(); resolve(b || file); }, 'image/png');
+      };
+      cropDlg.oncancel = () => resolve(file);
+    });
+  }
+
   async function uploadFile(blob) {
     const ext = { 'image/webp': 'webp', 'image/png': 'png', 'image/svg+xml': 'svg' }[blob.type] || 'jpg';
     const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
@@ -475,8 +527,9 @@
     const floc = [x.player_name, x.shirt_number && `n°${x.shirt_number}`].filter(Boolean).join(' ');
     const sub = [x.team || x.platform || x.brand, floc, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     const worn = x.shirt_version === WORN;
-    return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}" data-sel="i:${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
-      <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat)}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
+    const shp = x.shape || cat.shape || 'classique';
+    return `<a class="card shape-${esc(shp)}${worn ? ' worn' : ''}" href="#/i/${x.id}" data-sel="i:${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
+      <div class="face-wrap">${faceHtml(shp, cat.color || '#334155', url, cat.icon || '📦', cat)}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
 
@@ -526,18 +579,15 @@
     const { cats, its } = selection();
     // On ne peut pas mettre une carte dans elle-même ou dans un de ses sous-thèmes
     const banned = new Set(cats.flatMap((c) => [...subtreeIds(c.id)]));
-    const opts = treeList().filter(({ c }) => !banned.has(c.id));
     openModal(`<h3>Déplacer vers…</h3>
       <p class="hint">${[cats.length && plural(cats.length, 'carte'), its.length && plural(its.length, 'objet')].filter(Boolean).join(' et ')}</p>
-      <div class="move-list">
-        ${cats.length && !its.length ? '<button class="btn move-to" data-to="">🏠 Accueil (carte principale)</button>' : ''}
-        ${opts.map(({ c, depth }) => `<button class="btn move-to" data-to="${c.id}" style="padding-left:${14 + depth * 22}px">${icHtml(c)} ${esc(c.name)}</button>`).join('')}
-      </div>
+      <p class="hint">Touche ▸ pour voir les sous-thèmes, puis touche le nom de l’endroit choisi.</p>
+      ${cats.length && !its.length ? '<button class="btn move-to" data-to="">🏠 Accueil (carte principale)</button>' : ''}
+      <div class="tree-box" id="moveTree"></div>
       <div class="actions"><button class="btn" id="cancel">Annuler</button></div>`);
     $('#cancel').onclick = closeModal;
-    modalBody.querySelectorAll('.move-to').forEach((b) => (b.onclick = async () => {
-      const to = b.dataset.to || null;
-      b.disabled = true;
+    const moveTo = async (to, b) => {
+      if (b) b.disabled = true;
       try {
         for (const c of cats) {
           const { error } = await sb.from('collection_categories').update({ parent_id: to, position: childrenOf(to).length }).eq('id', c.id);
@@ -552,8 +602,13 @@
         }
         closeModal(); toast('Déplacé ✅'); stopSelect(false);
         go(to ? `#/c/${to}` : '#/', true);
-      } catch (err) { fail(err); b.disabled = false; }
-    }));
+      } catch (err) { fail(err); if (b) b.disabled = false; }
+    };
+    modalBody.querySelector('.move-to')?.addEventListener('click', (e) => moveTo(null, e.currentTarget));
+    mountTree($('#moveTree'), { banned }, (id) => {
+      const c = categories.find((k) => k.id === id);
+      if (confirm(`Déplacer vers « ${pathName(c)} » ?`)) moveTo(id);
+    });
   }
   async function deleteSelection() {
     const { cats, its } = selection();
@@ -717,7 +772,8 @@
       const img = groupImageUrl(cat.id, [...path, g].join('/'));
       const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
       const bg = img ? `background:#fff url('${esc(img)}') center / contain no-repeat` : `background:linear-gradient(160deg, ${color}, ${shade(color)})`;
-      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}" data-sel="g:${esc(g)}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="group" data-id="${esc(g)}">✏️</span>
+      const gShape = groupShape(cat.id, [...path, g].join('/')) || cat.shape || 'classique';
+      return `<a class="card sub shape-${esc(gShape)}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}" data-sel="g:${esc(g)}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="group" data-id="${esc(g)}">✏️</span>
         <div class="face" style="${bg}"><span class="tag" style="--fs:${size}">${esc(label)}</span></div>
         <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
     };
@@ -798,7 +854,7 @@
       gp.push(groupOf(x, f));
     }
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
-      <div class="hero card shape-${esc(cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat.id ? cat : null)}</div>
+      <div class="hero card shape-${esc(x.shape || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat.id ? cat : null)}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
@@ -863,6 +919,42 @@
     };
   }
 
+  // Liste des cartes en arbre repliable : ▸ pour voir les sous-thèmes
+  function treeHtml({ selected = null, banned = new Set(), open = new Set() } = {}) {
+    const rows = (parent, depth) => childrenOf(parent).filter((c) => !banned.has(c.id)).map((c) => {
+      const kids = childrenOf(c.id).filter((k) => !banned.has(k.id));
+      const isOpen = open.has(c.id);
+      return `<div class="tree-row${c.id === selected ? ' on' : ''}" style="--d:${depth}">
+          ${kids.length ? `<button type="button" class="tree-arrow${isOpen ? ' open' : ''}" data-tog="${c.id}" aria-label="Voir les sous-thèmes">▸</button>` : '<span class="tree-arrow"></span>'}
+          <button type="button" class="tree-pick" data-pick="${c.id}">${icHtml(c)} ${esc(c.name)}${kids.length ? ` <small>(${kids.length})</small>` : ''}</button>
+        </div>${kids.length && isOpen ? rows(c.id, depth + 1) : ''}`;
+    }).join('');
+    return rows(null, 0);
+  }
+  // Monte un arbre dans « box » ; onPick(id) quand on touche un nom
+  function mountTree(box, opts, onPick) {
+    const open = new Set(opts.selected ? ancestors(categories.find((c) => c.id === opts.selected)).slice(0, -1).map((c) => c.id) : []);
+    const draw = () => {
+      box.innerHTML = treeHtml({ ...opts, open });
+      box.querySelectorAll('[data-tog]').forEach((b) => (b.onclick = () => { open.has(b.dataset.tog) ? open.delete(b.dataset.tog) : open.add(b.dataset.tog); draw(); }));
+      box.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = () => onPick(b.dataset.pick)));
+    };
+    draw();
+  }
+
+  // Choix d'une forme ; '' = « comme la carte »
+  function shapePickerHtml(current, color, withInherit) {
+    return `<div class="shapes">${withInherit ? `<button type="button" data-shape="" class="${current ? '' : 'on'}"><div class="card"><div class="face" style="background:${esc(colorBg(color))};display:grid;place-items:center;font-size:1.4rem">↩︎</div></div>Comme la carte</button>` : ''}
+      ${SHAPES.map(([k, l]) => `<button type="button" data-shape="${k}" class="${k === current ? 'on' : ''}"><div class="card shape-${k}"><div class="face" style="background:${esc(colorBg(color))}"></div></div>${l}</button>`).join('')}</div>`;
+  }
+  function wireShapePicker(root, onPick) {
+    root.querySelectorAll('[data-shape]').forEach((b) => (b.onclick = () => {
+      root.querySelectorAll('[data-shape]').forEach((o) => o.classList.toggle('on', o === b));
+      onPick(b.dataset.shape);
+    }));
+  }
+  const groupShape = (catId, key) => (catPrefs(catId).shapes || {})[key] || null;
+
   // ---------- Formulaire objet ----------
   function itemForm(x = null, categoryId = null, prefill = {}) {
     const catId = x?.category_id || categoryId || categories[0]?.id;
@@ -874,9 +966,13 @@
           <input type="file" accept="image/*" id="photo">
         </label>
         <p class="hint">La photo est réduite automatiquement pour prendre très peu de place.</p>
+        <details class="shape-details"><summary>🔷 Forme de cette référence${x?.shape ? ` : ${esc((SHAPES.find((k) => k[0] === x.shape) || [])[1] || '')}` : ' : comme la carte'}</summary>
+          <div id="itemShapes"></div></details>
         <label>Nom *</label><input name="name" required value="${esc(x?.name)}" placeholder="Ex. : Super Mario 64">
         <label>Catégorie</label>
-        <select name="category_id">${treeList().map(({ c, depth }) => `<option value="${c.id}" ${c.id === catId ? 'selected' : ''}>${'\u00a0\u00a0\u00a0'.repeat(depth)}${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select>
+        <input type="hidden" name="category_id" value="${catId || ''}">
+        <button type="button" class="tree-current" id="catPickBtn"></button>
+        <div class="tree-box" id="catTree" hidden></div>
         <div id="dyn"></div>
         <div class="row">
           <div><label>Année</label><input name="year" inputmode="numeric" value="${esc(x ? x.year : prefill.year)}" placeholder="Ex. : 1996"></div>
@@ -909,6 +1005,16 @@
       } catch (e) { fail(e); }
     };
     let blob = null;
+    let itemShape = x?.shape || '';
+    const drawShapes = () => {
+      const c = categories.find((k) => k.id === $('[name=category_id]').value) || {};
+      $('#itemShapes').innerHTML = shapePickerHtml(itemShape, c.color || '#6366f1', true);
+      wireShapePicker($('#itemShapes'), (v) => {
+        itemShape = v;
+        modalBody.querySelector('.shape-details summary').textContent = `🔷 Forme de cette référence : ${v ? (SHAPES.find((k) => k[0] === v) || [])[1] : 'comme la carte'}`;
+      });
+    };
+    drawShapes();
     // Champs qui dépendent de la catégorie : « Console » seulement pour les jeux vidéo, marques adaptées
     const drawDyn = () => {
       const cat = categories.find((c) => c.id === $('[name=category_id]').value);
@@ -947,7 +1053,20 @@
       if (tt) tt.onchange = drawDyn;
     };
     drawDyn();
-    $('[name=category_id]').onchange = drawDyn;
+    // Choix de la catégorie dans un arbre repliable
+    const catInput = $('[name=category_id]');
+    const showCat = () => {
+      const c = categories.find((k) => k.id === catInput.value);
+      $('#catPickBtn').innerHTML = c ? `${ancestors(c).map((a) => `${icHtml(a)} ${esc(a.name)}`).join(' › ')} <span class="tree-caret">▾</span>` : 'Choisir… ▾';
+    };
+    showCat();
+    $('#catPickBtn').onclick = () => {
+      const box = $('#catTree');
+      box.hidden = !box.hidden;
+      if (!box.hidden) mountTree(box, { selected: catInput.value }, (id) => {
+        catInput.value = id; box.hidden = true; showCat(); drawDyn(); drawShapes();
+      });
+    };
     wireOther($('#f'));
     modalBody.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => {
       const q = $('[name=quantity]');
@@ -959,7 +1078,7 @@
       if (!file) return;
       $('#pickTxt').textContent = 'Réduction de la photo…';
       try {
-        blob = await compressImage(file);
+        blob = await compressImage(await cropImage(file), { keepAlpha: true });
         $('#pick').style.backgroundImage = `url('${URL.createObjectURL(blob)}')`;
         $('#pickTxt').textContent = '';
         toast(`Photo réduite : ${Math.max(1, Math.round(blob.size / 1024))} Ko`);
@@ -981,11 +1100,12 @@
       try {
         const oldPath = x?.photo_path;
         if (blob) row.photo_path = await uploadFile(blob);
+        if (itemShape !== (x?.shape || '')) row.shape = itemShape || null;
         const save = (r) => (x ? sb.from('collection_items').update(r).eq('id', x.id) : sb.from('collection_items').insert(r)).select().single();
         let { data, error } = await save(row);
         // Colonnes du flocage pas encore créées dans Supabase : on enregistre le reste
-        if (error && /player_name|shirt_number|shirt_version/.test(error.message || '')) {
-          const { player_name, shirt_number, shirt_version, ...rest } = row;
+        if (error && /player_name|shirt_number|shirt_version|shape/.test(error.message || '')) {
+          const { player_name, shirt_number, shirt_version, shape, ...rest } = row;
           ({ data, error } = await save(rest));
           if (!error) toast('Enregistré, mais le flocage n’est pas encore activé (mise à jour en cours)');
         }
@@ -1008,7 +1128,8 @@
       ${hasImg ? `<button type="button" class="btn" id="${id}Reset">Enlever l’image</button>` : ''}`;
   }
   async function imageFromFile(file) {
-    if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) {
+    file = await cropImage(file);
+    if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '')) {
       if (file.size > 300 * 1024) throw new Error('Ce SVG est trop lourd (300 Ko maximum)');
       return { path: await uploadFile(new Blob([await file.text()], { type: 'image/svg+xml' })) };
     }
@@ -1036,7 +1157,7 @@
     openModal(`<h3>${cat ? 'Modifier' : parent ? `Nouveau sous-thème dans « ${esc(parent.name)} »` : 'Nouvelle catégorie'}</h3>
       <form id="f">
         <label>Nom *</label><input name="name" required value="${esc(cat?.name)}" placeholder="Ex. : Figurines">
-        <label>Forme de la carte</label>
+        <label>Forme de cette carte</label><p class="hint">Elle ne change que cette carte. Ses sous-thèmes, sous-cartes et références peuvent avoir leur propre forme.</p>
         <div class="shapes">${SHAPES.map(([k, l]) => `<button type="button" data-s="${k}" class="${k === shape ? 'on' : ''}">
           <div class="card shape-${k}"><div class="face" style="background:${esc(colorBg(color))}"></div></div>${l}</button>`).join('')}</div>
         <label>Icône</label>
@@ -1114,6 +1235,7 @@
       <div class="stack">
         ${imagePickerHtml('g', `Image de la carte « ${esc(group ? groupName : cat.name)} » (JPEG, PNG, SVG)`, hasImg)}
         <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">
+        ${group ? `<details class="shape-details"><summary>🔷 Forme de la sous-carte « ${esc(groupName)} »</summary>${shapePickerHtml(groupShape(cat.id, group) || '', cat.color, true)}</details>` : ''}
         ${group && groupField && RENAMABLE.includes(groupField) && path[path.length - 1] !== NONE ? `<button class="btn" id="renGroup">✏️ Renommer « ${esc(groupName)} »</button>` : ''}
         <button class="btn" id="editCat">✏️ Modifier « ${esc(cat.name)} » : nom, forme, icône, couleur</button>
         <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
@@ -1125,6 +1247,12 @@
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    if (group) wireShapePicker(modalBody, async (v) => {
+      const shapes = { ...(catPrefs(cat.id).shapes || {}) };
+      if (v) shapes[group] = v; else delete shapes[group];
+      await savePrefs(cat.id, { shapes });
+      toast('Forme changée'); route();
+    });
     $('#unhide')?.addEventListener('click', async () => { await savePrefs(cat.id, { hidden: [] }); closeModal(); toast('Sous-cartes remises'); route(); });
     $('#delGroup')?.addEventListener('click', async () => {
       if (!confirm(groupItems.length ? `Supprimer la sous-carte « ${groupName} » et ses ${plural(groupItems.length, 'objet')} ? C’est définitif.` : `Supprimer la sous-carte « ${groupName} » ?`)) return;
