@@ -420,6 +420,9 @@
     // Sous-thème (ex. Vaisselle › Disney › Mugs, Collection › Voitures › 1/18) : objets affichés directement.
     // José peut quand même choisir un rangement avec « ↕ Trier ».
     if (cat?.parent_id) return [];
+    // Cartes créées par José (ex. Jeux de société) : objets affichés directement.
+    // Rangement automatique seulement pour les cartes de départ (Jeux vidéo, Jouets…).
+    if (!['jeux', 'consoles'].includes(kindOf(cat)) && !DEFAULT_CATEGORIES.some((d) => d.name === cat?.name)) return [];
     return [autoField(cat)];
   }
   // En mode automatique, une seule sous-carte (ex. tout « Disney ») ne sert à rien : on montre les objets
