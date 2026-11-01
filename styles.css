@@ -337,3 +337,20 @@ details summary { color: var(--accent); cursor: pointer; padding: 6px 0; }
 .page-title a.crumb { color: inherit; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; opacity: .85; padding: 4px 0; }
 .page-title a.crumb:active { opacity: .5; }
 .page-title.crumbs-small { font-size: 1rem; margin: 8px 0 12px; }
+
+/* Maillot porté par un joueur : cadre doré + badge */
+.card.worn .face-wrap { position: relative; }
+.card.worn .face-wrap { filter: drop-shadow(0 0 2px #ffd34d) drop-shadow(0 0 2px #ffd34d) drop-shadow(0 0 10px rgba(255, 196, 0, .9)); }
+.card.worn .label b { color: #ffd34d; }
+body.light .card.worn .label b { color: #b8860b; }
+.worn-badge { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); white-space: nowrap; z-index: 2;
+  background: linear-gradient(135deg, #ffe680, #f5b400 55%, #c98a00); color: #3a2400; font-weight: 800; font-size: .72rem;
+  padding: 3px 9px; border-radius: 99px; box-shadow: 0 2px 8px rgba(0,0,0,.4); letter-spacing: .3px; }
+.worn-banner { text-align: center; margin: 10px auto 0; padding: 8px 12px; border-radius: 12px; font-weight: 800; color: #3a2400;
+  background: linear-gradient(135deg, #ffe680, #f5b400 55%, #c98a00); box-shadow: 0 0 18px rgba(255, 196, 0, .6); }
+.version-chips { flex-wrap: wrap; }
+.version-chips .chip { display: inline-flex; align-items: center; white-space: nowrap; padding: 8px 12px; margin: 0; border-radius: 99px; border: 1px solid var(--surface-2);
+  background: var(--surface); cursor: pointer; font-size: .9rem; }
+.version-chips .chip input { position: absolute; opacity: 0; pointer-events: none; }
+.version-chips .chip:has(input:checked) { border-color: #f5b400; background: rgba(245, 180, 0, .18); }
+.version-chips .chip.worn:has(input:checked) { background: linear-gradient(135deg, #ffe680, #f5b400); color: #3a2400; font-weight: 700; }

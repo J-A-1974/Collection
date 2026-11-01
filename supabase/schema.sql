@@ -102,3 +102,6 @@ alter table public.collection_settings add column if not exists view_prefs jsonb
 alter table public.collection_categories add column if not exists parent_id uuid references public.collection_categories(id) on delete cascade;
 alter table public.collection_items add column if not exists team_type text;
 alter table public.collection_items add column if not exists team text;
+alter table public.collection_items add column if not exists player_name text;
+alter table public.collection_items add column if not exists shirt_number text;
+alter table public.collection_items add column if not exists shirt_version text;

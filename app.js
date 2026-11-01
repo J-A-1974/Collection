@@ -87,7 +87,18 @@
   const CLUBS = ['Paris SG', 'Marseille', 'Lyon', 'Lille', 'Monaco', 'Nantes', 'Saint-Étienne', 'Bordeaux', 'Lens', 'Rennes', 'Nice', 'Benfica', 'FC Porto', 'Sporting CP',
     'Real Madrid', 'FC Barcelone', 'Atlético Madrid', 'Manchester United', 'Manchester City', 'Liverpool', 'Arsenal', 'Chelsea', 'Juventus', 'AC Milan', 'Inter Milan',
     'Bayern Munich', 'Borussia Dortmund', 'Ajax', 'Boca Juniors', 'Flamengo'];
-  const TEAM_TYPES = ['Équipe nationale', 'Club'];
+  const TEAM_TYPES = ['Équipe nationale', 'Club', 'Autre'];
+  // Maillots : flocage (joueur + numéro) et version
+  const PLAYERS = ['Mbappé', 'Zidane', 'Griezmann', 'Benzema', 'Henry', 'Platini', 'Giroud', 'Pogba', 'Dembélé', 'Kanté', 'Ribéry', 'Cantona', 'Papin', 'Deschamps',
+    'Thuram', 'Barthez', 'Lloris', 'Pires', 'Trezeguet', 'Vieira', 'Makelele', 'Desailly', 'Lizarazu', 'Hernandez', 'Camavinga', 'Tchouaméni', 'Saliba', 'Olise', 'Doué',
+    'Ronaldo', 'Messi', 'Neymar', 'Pelé', 'Maradona', 'Ronaldinho', 'Kaká', 'Rivaldo', 'Romário', 'Vinícius Jr', 'Figo', 'Eusébio', 'Rui Costa', 'Bernardo Silva',
+    'Bruno Fernandes', 'Pepe', 'Haaland', 'Bellingham', 'Kane', 'Salah', 'Lewandowski', 'De Bruyne', 'Modrić', 'Benzema', 'Ibrahimović', 'Beckham', 'Rooney', 'Gerrard',
+    'Lampard', 'Drogba', 'Eto’o', 'Weah', 'Iniesta', 'Xavi', 'Ramos', 'Casillas', 'Raúl', 'Pirlo', 'Totti', 'Del Piero', 'Maldini', 'Baggio', 'Buffon', 'Cruyff',
+    'Van Basten', 'Robben', 'Beckenbauer', 'Müller', 'Kroos', 'Neuer', 'Yamal', 'Pedri', 'Hakimi', 'Mahrez', 'Mané', 'Son', 'Suárez', 'Cavani', 'Di María', 'Hazard'];
+  const SHIRT_NUMBERS = Array.from({ length: 99 }, (_, i) => String(i + 1));
+  const SHIRT_VERSIONS = ['Porté par un joueur', 'Officiel', 'Réplique'];
+  const WORN = 'Porté par un joueur';
+  const isShirt = (cat) => cat && /maillot/i.test(pathName(cat));
   function brandsFor(kind) {
     if (kind === 'jeux' || kind === 'consoles') return BRANDS.jeux;
     if (BRANDS[kind]) return BRANDS[kind];
@@ -119,7 +130,7 @@
     return [...base, ...extra];
   };
   const otherValue = (fd, name) => (fd[name] === '__autre' ? (fd[name + '__autre'] || '').trim() : fd[name]) || null;
-  const CONDITIONS = ['Neuf (sous blister)', 'Très bon', 'Bon', 'Moyen', 'Abîmé'];
+  const CONDITIONS = ['Neuf (sous blister)', 'Neuf', 'Très bon', 'Bon', 'Moyen', 'Abîmé'];
   const EMOJI_GROUPS = [
     ['Jeux et jouets', ['🎮', '🕹️', '👾', '🎰', '🧸', '🪀', '🪁', '🧩', '🎲', '♟️', '🃏', '🀄', '🎴', '🪅', '🪆', '🤖', '🦸', '🦹', '🧙', '🧌', '👸', '🦖', '🦄', '🐉', '🚂', '🚗', '🏎️', '🚓', '🚒', '🚜', '✈️', '🚀', '🛸', '⛵', '🏰']],
     ['Sport', ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🏓', '🏸', '🥊', '⛳', '🏒', '🎿', '🛹', '🚲', '🏁', '👕', '🎽', '👟', '🧢', '🏆', '🥇', '🏅', '🎖️']],
@@ -450,9 +461,11 @@
   function itemCard(x) {
     const cat = categories.find((c) => c.id === x.category_id) || {};
     const url = x.photo_path && urlCache.get(x.photo_path);
-    const sub = [x.team || x.platform || x.brand, x.year, x.owner, x.location].filter(Boolean).join(' · ');
-    return `<a class="card shape-${esc(cat.shape || 'classique')}" href="#/i/${x.id}">
-      <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}</div>
+    const floc = [x.player_name, x.shirt_number && `n°${x.shirt_number}`].filter(Boolean).join(' ');
+    const sub = [x.team || x.platform || x.brand, floc, x.year, x.owner, x.location].filter(Boolean).join(' · ');
+    const worn = x.shirt_version === WORN;
+    return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}">
+      <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
 
@@ -636,12 +649,16 @@
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
       <div class="hero card shape-${esc(cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
+      ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
       <div class="fields">
         ${field('Catégorie', `${cat.icon || ''} ${pathName(cat)}`)}
         ${field('Propriétaire', x.owner)}
         ${field('Type', x.team_type)}
         ${field(x.team_type === 'Club' ? 'Club' : x.team_type === 'Équipe nationale' ? 'Pays' : 'Équipe', x.team)}
+        ${field('Version', x.shirt_version)}
+        ${field('Flocage', x.player_name)}
+        ${field('Numéro', x.shirt_number)}
         ${field('Console', x.platform)}
         ${field('Marque', x.brand)}
         ${field('Année', x.year)}
@@ -747,10 +764,22 @@
       const showPlatform = kind === 'jeux' || kind === 'consoles' || platform;
       const showTeam = kind === 'sport' || teamType || team;
       const teams = teamType === 'Club' ? CLUBS : teamType === 'Équipe nationale' ? NATIONAL_TEAMS : [...NATIONAL_TEAMS, ...CLUBS];
+      const player = prev ? otherValue(prev, 'player_name') : x?.player_name;
+      const number = prev ? otherValue(prev, 'shirt_number') : x?.shirt_number;
+      const version = prev ? prev.shirt_version : x?.shirt_version;
+      const showShirt = isShirt(cat) || player || number || version;
+      const players = [...new Set(PLAYERS)].sort((a, b) => a.localeCompare(b, 'fr'));
       $('#dyn').innerHTML = `
         ${showTeam ? `<div class="row">
           <div><label>Type</label><select name="team_type"><option value="">Choisir…</option>${TEAM_TYPES.map((t) => `<option ${t === teamType ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
           <div><label>${teamType === 'Club' ? 'Club' : teamType === 'Équipe nationale' ? 'Pays' : 'Pays ou club'}</label>${selectOther('team', withUsed(teams, 'team'), team, 'Nom de l’équipe')}</div>
+        </div>` : ''}
+        ${showShirt ? `<label>Version du maillot</label>
+        <div class="chips version-chips">${SHIRT_VERSIONS.map((v) => `<label class="chip${v === WORN ? ' worn' : ''}"><input type="radio" name="shirt_version" value="${v}" ${v === version ? 'checked' : ''}>${v === WORN ? '⭐ ' : ''}${v}</label>`).join('')}
+          <label class="chip"><input type="radio" name="shirt_version" value="" ${version ? '' : 'checked'}>Je ne sais pas</label></div>
+        <div class="row">
+          <div><label>Flocage (nom du joueur)</label>${selectOther('player_name', withUsed(players, 'player_name'), player, 'Nom du joueur')}</div>
+          <div style="flex:0 0 34%"><label>Numéro</label>${selectOther('shirt_number', withUsed(SHIRT_NUMBERS, 'shirt_number'), number, 'Ex. : 10')}</div>
         </div>` : ''}
         <div class="row">
           ${showPlatform ? `<div><label>Console</label>${selectOther('platform', withUsed(PLATFORMS, 'platform'), platform, 'Nom de la console')}</div>` : ''}
@@ -786,6 +815,7 @@
         name: fd.name.trim(), category_id: fd.category_id,
         platform: otherValue(fd, 'platform'), brand: otherValue(fd, 'brand'),
         ...('team_type' in fd ? { team_type: fd.team_type || null, team: otherValue(fd, 'team') } : {}),
+        ...('player_name' in fd ? { player_name: otherValue(fd, 'player_name'), shirt_number: otherValue(fd, 'shirt_number'), shirt_version: fd.shirt_version || null } : {}),
         year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: otherValue(fd, 'owner'), quantity: Math.max(1, parseInt(fd.quantity, 10) || 1),
         condition: fd.condition || null, purchase_price: numOrNull(fd.purchase_price),
         location: otherValue(fd, 'location'), acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
@@ -794,8 +824,14 @@
       try {
         const oldPath = x?.photo_path;
         if (blob) row.photo_path = await uploadFile(blob);
-        const q = x ? sb.from('collection_items').update(row).eq('id', x.id) : sb.from('collection_items').insert(row);
-        const { data, error } = await q.select().single();
+        const save = (r) => (x ? sb.from('collection_items').update(r).eq('id', x.id) : sb.from('collection_items').insert(r)).select().single();
+        let { data, error } = await save(row);
+        // Colonnes du flocage pas encore créées dans Supabase : on enregistre le reste
+        if (error && /player_name|shirt_number|shirt_version/.test(error.message || '')) {
+          const { player_name, shirt_number, shirt_version, ...rest } = row;
+          ({ data, error } = await save(rest));
+          if (!error) toast('Enregistré, mais le flocage n’est pas encore activé (mise à jour en cours)');
+        }
         if (error) throw error;
         if (blob && oldPath) removeFiles([oldPath]);
         await signedUrls([data.photo_path]);
