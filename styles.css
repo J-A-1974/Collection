@@ -44,12 +44,18 @@ body { min-height: 100vh; padding-bottom: 110px; overflow-x: hidden; }
   -webkit-mask: linear-gradient(#000 0 52%, transparent 52% 55%, #000 55% 62%, transparent 62% 66%, #000 66% 72%, transparent 72% 77%, #000 77% 82%, transparent 82% 88%, #000 88% 92%, transparent 92%);
           mask: linear-gradient(#000 0 52%, transparent 52% 55%, #000 55% 62%, transparent 62% 66%, #000 66% 72%, transparent 72% 77%, #000 77% 82%, transparent 82% 88%, #000 88% 92%, transparent 92%);
   filter: drop-shadow(0 0 40px rgba(255, 90, 160, .6)); }
-.theme-synthwave > :is(#bg, .mini-bg)::after { left: -50%; right: -50%; bottom: -10%; height: 55%; transform-origin: top; transform: perspective(300px) rotateX(62deg);
+.theme-synthwave > :is(#bg, .mini-bg)::after { left: -50%; right: -50%; bottom: -10%; height: calc(55% + 50px); transform-origin: top; transform: perspective(300px) rotateX(62deg) translateY(-50px);
   background:
-    repeating-linear-gradient(90deg, rgba(41, 230, 255, .75) 0 2px, transparent 2px 60px),
-    repeating-linear-gradient(0deg, rgba(255, 61, 154, .75) 0 2px, transparent 2px 50px);
+    repeating-linear-gradient(90deg, transparent 0, rgba(41, 230, 255, .75) 1px 3px, transparent 4px 60px),
+    repeating-linear-gradient(0deg, transparent 0, rgba(255, 61, 154, .75) 1px 3px, transparent 4px 50px);
+  /* Lignes floues vers l'horizon (c'est là qu'elles scintillaient) ; on fait glisser la grille entière
+     (transform) au lieu de redessiner le motif à chaque image */
+  -webkit-mask: linear-gradient(transparent 0%, #000 45%); mask: linear-gradient(transparent 0%, #000 45%);
+  top: auto; margin-top: -50px; backface-visibility: hidden; will-change: transform;
   animation: grid 3s linear infinite; }
-@keyframes grid { to { background-position: 0 0, 0 50px; } }
+@keyframes grid { from { transform: perspective(300px) rotateX(62deg) translateY(-50px); } to { transform: perspective(300px) rotateX(62deg) translateY(0); } }
+/* Fond sans animation (choix dans Apparence) */
+body.still #bg::before, body.still #bg::after { animation: none !important; }
 
 /* 2. Salle d'arcade : étoiles pixel + lignes d'écran cathodique */
 .theme-arcade > :is(#bg, .mini-bg) { background:

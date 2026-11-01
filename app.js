@@ -32,6 +32,8 @@
   // Taille des cartes, retenue sur ce téléphone
   let cardSize = 'grand';
   try { cardSize = localStorage.getItem('cardSize') || 'grand'; } catch {}
+  let bgStill = false;
+  try { bgStill = localStorage.getItem('bgStill') === '1'; } catch {}
   const OWNERS = ['Papa', 'Maman', 'Anaïs', 'Elodie'];
   const PLACES = ['Normandie', 'Montgeron'];
   // Sous-cartes proposées d'office dans « Jeux vidéo » et « Consoles »
@@ -241,7 +243,7 @@
   // ---------- Apparence ----------
   function applyLook() {
     const t = settings.theme || 'synthwave';
-    document.body.className = `theme-${t}${LIGHT_THEMES.includes(t) ? ' light' : ''}${cardSize === 'petit' ? ' cards-small' : ''}`;
+    document.body.className = `theme-${t}${LIGHT_THEMES.includes(t) ? ' light' : ''}${cardSize === 'petit' ? ' cards-small' : ''}${bgStill ? ' still' : ''}`;
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', LIGHT_THEMES.includes(t) ? '#ffffff' : '#0f0a1f');
     const bg = $('#bg');
     const bgUrl = settings.theme === 'photo' && settings.bg_path && urlCache.get(settings.bg_path);
@@ -588,12 +590,15 @@
         html += `<div class="grid">${kids.map(categoryCard).join('')}
           <button class="card add" id="addSub"><div class="face">+</div><div class="label"><b>Nouveau sous-thème</b></div></button></div>`;
       }
+      // Carte « Nouveau sous-thème » toujours visible au premier niveau, même sans sous-thème existant
+      const addSubCard = level === 0 && !kids.length
+        ? '<button class="card add" id="addSub3"><div class="face">📁</div><div class="label"><b>Nouveau sous-thème</b></div></button>' : '';
       if (useGroups) {
-        html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${groups.map(subCard).join('')}</div>
+        html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${groups.map(subCard).join('')}${addSubCard}</div>
           <p class="hint" style="text-align:center;margin-top:16px">Les objets sont rangés par ${esc(fieldName)}. Tu peux changer ça avec le bouton « ↕ Trier ».</p>`;
       } else if (list.length) {
         html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${list.map(itemCard).join('')}
-          <button class="card add add-item"><div class="face">+</div><div class="label"><b>Ajouter un objet</b></div></button></div>`;
+          <button class="card add add-item"><div class="face">+</div><div class="label"><b>Ajouter un objet</b></div></button>${addSubCard}</div>`;
       } else if (!kids.length) {
         html += `<p class="empty">Aucun objet pour l’instant.<br><br>
           <button class="btn primary add-item" style="max-width:280px">➕ Ajouter un objet</button><br><br>
@@ -604,6 +609,7 @@
       $('#results').innerHTML = html;
       $('#addSub')?.addEventListener('click', () => categoryForm(null, cat.id));
       $('#addSub2')?.addEventListener('click', () => categoryForm(null, cat.id));
+      $('#addSub3')?.addEventListener('click', () => categoryForm(null, cat.id));
       document.querySelectorAll('#results .add-item').forEach((b) => (b.onclick = () => itemForm(null, cat.id, prefill)));
     };
     $('#search').oninput = draw;
@@ -994,6 +1000,11 @@
         <button type="button" data-size="grand" class="${cardSize === 'grand' ? 'on' : ''}"><span class="ico">▢▢</span>Grandes<br><small>2 par ligne</small></button>
         <button type="button" data-size="petit" class="${cardSize === 'petit' ? 'on' : ''}"><span class="ico">▫▫▫</span>Petites<br><small>3 par ligne</small></button>
       </div>
+      <div class="lbl">Fond animé</div>
+      <div class="sizes">
+        <button type="button" data-still="0" class="${bgStill ? '' : 'on'}"><span class="ico">✨</span>Animé</button>
+        <button type="button" data-still="1" class="${bgStill ? 'on' : ''}"><span class="ico">⏸️</span>Immobile</button>
+      </div>
       ${[...new Set(THEMES.map((t) => t[2]))].map((grp) => `<div class="lbl">${grp}</div>
       <div class="themes">${THEMES.filter((t) => t[2] === grp).map(([k, l]) => `<button type="button" data-t="${k}" class="theme-${k} ${settings.theme === k ? 'on' : ''}">
         <div class="mini-bg" id="mini-${k}" style="background-size:cover"></div><span>${l}</span></button>`).join('')}</div>`).join('')}
@@ -1015,6 +1026,12 @@
       try { localStorage.setItem('cardSize', cardSize); } catch {}
       applyLook();
       modalBody.querySelectorAll('[data-size]').forEach((o) => o.classList.toggle('on', o === b));
+    }));
+    modalBody.querySelectorAll('[data-still]').forEach((b) => (b.onclick = () => {
+      bgStill = b.dataset.still === '1';
+      try { localStorage.setItem('bgStill', bgStill ? '1' : '0'); } catch {}
+      applyLook();
+      modalBody.querySelectorAll('[data-still]').forEach((o) => o.classList.toggle('on', o === b));
     }));
     modalBody.querySelectorAll('[data-t]').forEach((b) => (b.onclick = async () => {
       const t = b.dataset.t;
