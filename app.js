@@ -358,9 +358,15 @@
   }
 
   // Une carte : la forme (cartouche, maillot…) avec la photo ou l'icône, et le texte dessous
-  function faceHtml(shape, color, url, icon) {
+  // Icône d'une carte : l'image importée par José (clé « id|__icone ») ou l'emoji
+  const ICON_IMG = '__icone';
+  function icHtml(c, fallback = '📦') {
+    const img = c?.id && groupImageUrl(c.id, ICON_IMG);
+    return img ? `<img class="ico-img" src="${esc(img)}" alt="">` : esc(c?.icon || fallback);
+  }
+  function faceHtml(shape, color, url, icon, cat = null) {
     const style = url ? `background-image:url('${esc(url)}')` : `background:${esc(colorBg(color))}`;
-    return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${esc(icon)}</span>`}</div>`;
+    return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${cat ? icHtml(cat) : esc(icon)}</span>`}</div>`;
   }
   // Couleur d'une sous-carte selon la famille de console ou la marque
   function groupColor(v) {
@@ -459,7 +465,7 @@
     const n = countOf(itemsUnder(c.id));
     const img = groupImageUrl(c.id, CARD_IMG);
     return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}" data-sel="c:${c.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="cat" data-id="${c.id}">✏️</span>
-      ${img ? `<div class="face" style="background:#fff url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon)}
+      ${img ? `<div class="face" style="background:#fff url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon, c)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
   }
 
@@ -470,7 +476,7 @@
     const sub = [x.team || x.platform || x.brand, floc, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     const worn = x.shirt_version === WORN;
     return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}" data-sel="i:${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
-      <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
+      <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat)}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
 
@@ -525,7 +531,7 @@
       <p class="hint">${[cats.length && plural(cats.length, 'carte'), its.length && plural(its.length, 'objet')].filter(Boolean).join(' et ')}</p>
       <div class="move-list">
         ${cats.length && !its.length ? '<button class="btn move-to" data-to="">🏠 Accueil (carte principale)</button>' : ''}
-        ${opts.map(({ c, depth }) => `<button class="btn move-to" data-to="${c.id}" style="padding-left:${14 + depth * 22}px">${esc(c.icon)} ${esc(c.name)}</button>`).join('')}
+        ${opts.map(({ c, depth }) => `<button class="btn move-to" data-to="${c.id}" style="padding-left:${14 + depth * 22}px">${icHtml(c)} ${esc(c.name)}</button>`).join('')}
       </div>
       <div class="actions"><button class="btn" id="cancel">Annuler</button></div>`);
     $('#cancel').onclick = closeModal;
@@ -642,7 +648,7 @@
   // Fil d'Ariane cliquable : Accueil › Vaisselle › Disney › Mugs (le dernier niveau n'est pas un lien)
   function crumbsHtml(cat, path = [], labels = [], lastLinked = false) {
     const parts = [['🏠', '#/']];
-    ancestors(cat).forEach((c, i, arr) => parts.push([i === arr.length - 1 ? `${esc(c.icon)} ${esc(c.name)}` : esc(c.name), `#/c/${c.id}`]));
+    ancestors(cat).forEach((c, i, arr) => parts.push([i === arr.length - 1 ? `${icHtml(c)} ${esc(c.name)}` : esc(c.name), `#/c/${c.id}`]));
     labels.forEach((l, i) => parts.push([esc(l), groupLink(cat.id, path.slice(0, i + 1))]));
     return parts.map(([t, h], i) => (i === parts.length - 1 && !lastLinked ? `<span>${t}</span>` : `<a class="crumb" href="${h}">${t}</a>`)).join(' › ');
   }
@@ -792,7 +798,7 @@
       gp.push(groupOf(x, f));
     }
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
-      <div class="hero card shape-${esc(cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}</div>
+      <div class="hero card shape-${esc(cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat.id ? cat : null)}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
@@ -1033,7 +1039,9 @@
         <label>Forme de la carte</label>
         <div class="shapes">${SHAPES.map(([k, l]) => `<button type="button" data-s="${k}" class="${k === shape ? 'on' : ''}">
           <div class="card shape-${k}"><div class="face" style="background:${esc(colorBg(color))}"></div></div>${l}</button>`).join('')}</div>
-        <label>Icône</label>${EMOJI_GROUPS.map(([t, list]) => `<div class="hint">${t}</div>
+        <label>Icône</label>
+        <div class="stack">${imagePickerHtml('ic', '📷 Mon image comme icône (JPEG, PNG, SVG)', cat && groupImageUrl(cat.id, ICON_IMG))}</div>
+        <p class="hint" id="icState">${cat && groupImageUrl(cat.id, ICON_IMG) ? 'Ton image est l’icône actuelle. Touche un emoji ou « Enlever l’image » pour revenir à un emoji.' : '…ou choisis un emoji :'}</p>${EMOJI_GROUPS.map(([t, list]) => `<div class="hint">${t}</div>
           <div class="emojis">${list.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${e}</button>`).join('')}</div>`).join('')}
         <label>Couleur</label>${[['Classiques', COLORS], ['Vives', VIVID_COLORS], ['Mélanges', GRADIENTS]].map(([t, list]) => `<div class="hint">${t}</div>
           <div class="colors">${list.map((c) => `<button type="button" data-c="${c}" style="background:${colorBg(c)}" class="${c === color ? 'on' : ''}"></button>`).join('')}</div>`).join('')}
@@ -1049,7 +1057,17 @@
       modalBody.querySelectorAll(`[data-${attr}]`).forEach((o) => o.classList.toggle('on', o === b));
     }));
     pick('s', (v) => (shape = v));
-    pick('e', (v) => (icon = v));
+    let newIcon; // undefined = pas de changement, null = enlever
+    pick('e', (v) => {
+      icon = v;
+      if (cat && groupImageUrl(cat.id, ICON_IMG)) { newIcon = null; $('#icState').textContent = '✅ L’emoji remplacera ton image'; }
+      else if (newIcon) { newIcon = undefined; $('#icState').textContent = '…ou choisis un emoji :'; }
+    });
+    wireImagePicker('ic', async (v) => {
+      newIcon = v;
+      modalBody.querySelectorAll('[data-e]').forEach((o) => o.classList.remove('on'));
+      $('#icState').textContent = v ? '✅ Image prête comme icône, appuie sur Enregistrer' : '✅ L’icône redeviendra un emoji, appuie sur Enregistrer';
+    });
     let newImg; // undefined = pas de changement
     wireImagePicker('ci', async (v) => {
       newImg = v;
@@ -1075,6 +1093,7 @@
         }
         categories = cat ? categories.map((c) => (c.id === data.id ? data : c)) : [...categories, data];
         if (newImg !== undefined) await setGroupImage(data.id, CARD_IMG, newImg);
+        if (newIcon !== undefined) await setGroupImage(data.id, ICON_IMG, newIcon);
         closeModal();
         toast(cat ? 'Modifié' : parent ? 'Sous-thème créé' : 'Catégorie créée');
         cat ? route() : go(`#/c/${data.id}`);
@@ -1091,7 +1110,7 @@
     const gChain = groupChain(cat);
     const groupItems = group ? items.filter((x) => x.category_id === cat.id && path.every((g, i) => groupOf(x, gChain[i]) === g)) : [];
     const hasImg = groupImageUrl(cat.id, imgKey);
-    openModal(`<h3>${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
+    openModal(`<h3>${icHtml(cat)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
       <div class="stack">
         ${imagePickerHtml('g', `Image de la carte « ${esc(group ? groupName : cat.name)} » (JPEG, PNG, SVG)`, hasImg)}
         <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">
