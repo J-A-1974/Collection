@@ -486,6 +486,16 @@
     if (edit === 'group' && editGroup) editGroup(id);
   }, true);
 
+  // Supprime des objets (et leurs photos) dans Supabase
+  async function deleteItems(list) {
+    for (const x of list) {
+      const { error } = await sb.from('collection_items').delete().eq('id', x.id);
+      if (error) throw error;
+      removeFiles([x.photo_path]);
+      items = items.filter((i) => i.id !== x.id);
+    }
+  }
+
   function renderHome() {
     setHeader();
     fab.onclick = () => itemForm();
@@ -700,13 +710,10 @@
     if (url) $('#hero').onclick = () => showPhoto(url, x.name);
     $('#edit').onclick = () => itemForm(x);
     $('#del').onclick = async () => {
-      if (!confirm(`Supprimer « ${x.name} » ?`)) return;
+      if (!confirm(`Supprimer « ${x.name} » ? C’est définitif.`)) return;
       try {
-        const { error } = await sb.from('collection_items').delete().eq('id', x.id);
-        if (error) throw error;
-        removeFiles([x.photo_path]);
-        items = items.filter((i) => i.id !== x.id);
-        toast('Objet supprimé');
+        await deleteItems([x]);
+        toast('Référence supprimée');
         go(`#/c/${x.category_id}`);
       } catch (e) { fail(e); }
     };
@@ -773,7 +780,16 @@
           <label>Notes</label><textarea name="notes" rows="3">${esc(x?.notes)}</textarea>
         </details>
         <div class="actions"><button type="button" class="btn" id="cancel">Annuler</button><button class="btn primary" id="save">Enregistrer</button></div>
+        ${x ? '<button type="button" class="btn danger" id="delItem" style="width:100%;margin-top:12px">🗑️ Supprimer cette référence</button>' : ''}
       </form>`);
+    if (x) $('#delItem').onclick = async () => {
+      if (!confirm(`Supprimer « ${x.name} » ? C’est définitif.`)) return;
+      try {
+        await deleteItems([x]);
+        closeModal(); toast('Référence supprimée');
+        if (location.hash === `#/i/${x.id}`) go(`#/c/${x.category_id}`); else route();
+      } catch (e) { fail(e); }
+    };
     let blob = null;
     // Champs qui dépendent de la catégorie : « Console » seulement pour les jeux vidéo, marques adaptées
     const drawDyn = () => {
@@ -960,6 +976,8 @@
     const n = countOf(itemsUnder(cat.id));
     const nSub = subtreeIds(cat.id).size - 1;
     const imgKey = group || CARD_IMG;
+    const gChain = groupChain(cat);
+    const groupItems = group ? items.filter((x) => x.category_id === cat.id && path.every((g, i) => groupOf(x, gChain[i]) === g)) : [];
     const hasImg = groupImageUrl(cat.id, imgKey);
     openModal(`<h3>${esc(cat.icon)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
       <div class="stack">
@@ -969,11 +987,23 @@
         <button class="btn" id="editCat">✏️ Modifier « ${esc(cat.name)} » : nom, forme, icône, couleur</button>
         <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
-        <button class="btn danger" id="delCat">Supprimer « ${esc(cat.name)} »${nSub ? ` et ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` (${plural(n, 'objet')})` : ''}</button>
+        ${group ? `<button class="btn danger" id="delGroup">🗑️ Supprimer la sous-carte « ${esc(groupName)} » et ses ${plural(groupItems.length, 'objet')}</button>` : ''}
+        <button class="btn danger" id="delCat">🗑️ Supprimer ${cat.parent_id ? 'le sous-thème' : 'la carte'} « ${esc(cat.name)} »${nSub ? ` et ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` (${plural(n, 'objet')})` : ''}</button>
         <button class="btn" id="cancel">Fermer</button>
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    $('#delGroup')?.addEventListener('click', async () => {
+      if (!groupItems.length) { closeModal(); return toast('Cette sous-carte est vide : elle disparaît dès qu’elle n’a plus d’objet'); }
+      if (!confirm(`Supprimer la sous-carte « ${groupName} » et ses ${plural(groupItems.length, 'objet')} ? C’est définitif.`)) return;
+      try {
+        await deleteItems(groupItems);
+        const next = { ...groupImages() }; delete next[`${cat.id}|${group}`];
+        await saveSettings({ group_images: next }).catch(() => {});
+        closeModal(); toast('Sous-carte supprimée');
+        go(path.length > 1 ? groupLink(cat.id, path.slice(0, -1)) : `#/c/${cat.id}`);
+      } catch (e) { fail(e); }
+    });
     $('#renGroup')?.addEventListener('click', async () => {
       const old = path[path.length - 1];
       const v = (prompt(`Nouveau nom pour « ${groupName} » :`, old) || '').trim();
@@ -1013,7 +1043,8 @@
         removeFiles(photos);
         categories = categories.filter((c) => !ids.has(c.id));
         items = items.filter((x) => !ids.has(x.category_id));
-        closeModal(); toast('Supprimé'); go(cat.parent_id ? `#/c/${cat.parent_id}` : '#/');
+        closeModal(); toast('Supprimé');
+        if ([...ids].some((i) => location.hash.includes(i))) go(cat.parent_id ? `#/c/${cat.parent_id}` : '#/'); else route();
       } catch (err) { fail(err); }
     };
   }
