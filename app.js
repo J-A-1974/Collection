@@ -458,7 +458,7 @@
   function categoryCard(c) {
     const n = countOf(itemsUnder(c.id));
     const img = groupImageUrl(c.id, CARD_IMG);
-    return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}">
+    return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="cat" data-id="${c.id}">✏️</span>
       ${img ? `<div class="face" style="background:#fff url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
   }
@@ -469,10 +469,22 @@
     const floc = [x.player_name, x.shirt_number && `n°${x.shirt_number}`].filter(Boolean).join(' ');
     const sub = [x.team || x.platform || x.brand, floc, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     const worn = x.shirt_version === WORN;
-    return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}">
+    return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
       <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
+
+  // Petit crayon ✏️ sur chaque carte : modifier sans ouvrir la carte
+  let editGroup = null; // (g) => menu de la sous-carte, défini par la page catégorie ouverte
+  app.addEventListener('click', (e) => {
+    const pen = e.target.closest('[data-edit]');
+    if (!pen) return;
+    e.preventDefault(); e.stopPropagation();
+    const { edit, id } = pen.dataset;
+    if (edit === 'cat') { const c = categories.find((k) => k.id === id); if (c) categoryMenu(c); }
+    if (edit === 'item') { const x = items.find((k) => k.id === id); if (x) itemForm(x); }
+    if (edit === 'group' && editGroup) editGroup(id);
+  }, true);
 
   function renderHome() {
     setHeader();
@@ -561,8 +573,10 @@
         <div><b>${total ? money(total) : '–'}</b><span>valeur</span></div>
       </div>
       <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(groupName || cat.name)}">
-        <button class="sort-btn" id="sortBtn">↕ Trier</button></div>
+        <button class="sort-btn" id="sortBtn">↕ Trier</button><button class="sort-btn" id="editBtn" aria-label="Modifier">✏️</button></div>
       <div id="results"></div>`;
+    $('#editBtn').onclick = () => categoryMenu(cat, path, groupName);
+    editGroup = (g) => categoryMenu(cat, [...path, g], groupLabel(g, field), field);
     $('#sortBtn').onclick = () => sortMenu(`Trier et classer « ${cat.name} »`, [
       ['group', 'Ranger les objets en sous-cartes par', GROUP_FIELDS],
       ['groupSort', 'Ordre des sous-cartes', GROUP_SORTS],
@@ -575,7 +589,7 @@
       const img = groupImageUrl(cat.id, [...path, g].join('/'));
       const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
       const bg = img ? `background:#fff url('${esc(img)}') center / contain no-repeat` : `background:linear-gradient(160deg, ${color}, ${shade(color)})`;
-      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}">
+      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="group" data-id="${esc(g)}">✏️</span>
         <div class="face" style="${bg}"><span class="tag" style="--fs:${size}">${esc(label)}</span></div>
         <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
     };
@@ -940,7 +954,8 @@
     };
   }
 
-  function categoryMenu(cat, path = [], groupName = '') {
+  const RENAMABLE = ['platform', 'brand', 'owner', 'location', 'team', 'team_type', 'condition', 'year'];
+  function categoryMenu(cat, path = [], groupName = '', groupField = null) {
     const group = path.length ? path.join('/') : null;
     const n = countOf(itemsUnder(cat.id));
     const nSub = subtreeIds(cat.id).size - 1;
@@ -950,7 +965,8 @@
       <div class="stack">
         ${imagePickerHtml('g', `Image de la carte « ${esc(group ? groupName : cat.name)} » (JPEG, PNG, SVG)`, hasImg)}
         <hr style="border:0;border-top:1px solid var(--surface-2);width:100%">
-        <button class="btn" id="editCat">✏️ Nom, forme, icône, couleur</button>
+        ${group && groupField && RENAMABLE.includes(groupField) && path[path.length - 1] !== NONE ? `<button class="btn" id="renGroup">✏️ Renommer « ${esc(groupName)} »</button>` : ''}
+        <button class="btn" id="editCat">✏️ Modifier « ${esc(cat.name)} » : nom, forme, icône, couleur</button>
         <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
         <button class="btn danger" id="delCat">Supprimer « ${esc(cat.name)} »${nSub ? ` et ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` (${plural(n, 'objet')})` : ''}</button>
@@ -958,6 +974,29 @@
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    $('#renGroup')?.addEventListener('click', async () => {
+      const old = path[path.length - 1];
+      const v = (prompt(`Nouveau nom pour « ${groupName} » :`, old) || '').trim();
+      if (!v || v === old) return;
+      const ids = subtreeIds(cat.id);
+      const list = items.filter((x) => ids.has(x.category_id) && String(x[groupField] ?? '') === old);
+      const val = groupField === 'year' ? numOrNull(v) : v;
+      try {
+        for (const x of list) {
+          const { error } = await sb.from('collection_items').update({ [groupField]: val }).eq('id', x.id);
+          if (error) throw error;
+          x[groupField] = val;
+        }
+        const oldImg = groupImages()[`${cat.id}|${path.join('/')}`];
+        if (oldImg) { // l'image de la sous-carte suit le nouveau nom
+          const next = { ...groupImages(), [`${cat.id}|${[...path.slice(0, -1), v].join('/')}`]: oldImg };
+          delete next[`${cat.id}|${path.join('/')}`];
+          await saveSettings({ group_images: next }).catch(() => {});
+        }
+        closeModal(); toast(`Renommé (${plural(list.length, 'objet')})`);
+        go(groupLink(cat.id, [...path.slice(0, -1), v]));
+      } catch (err) { fail(err); }
+    });
     $('#addSubM').onclick = () => categoryForm(null, cat.id);
     $('#look').onclick = lookMenu;
     wireImagePicker('g', async (v) => {

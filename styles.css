@@ -360,3 +360,11 @@ body.light .card.worn .label b { color: #b8860b; }
 .version-chips .chip input { position: absolute; opacity: 0; pointer-events: none; }
 .version-chips .chip:has(input:checked) { border-color: #f5b400; background: rgba(245, 180, 0, .18); }
 .version-chips .chip.worn:has(input:checked) { background: linear-gradient(135deg, #ffe680, #f5b400); color: #3a2400; font-weight: 700; }
+
+/* Crayon ✏️ pour modifier une carte, un sous-thème ou un objet */
+.card { position: relative; }
+.edit-pen { position: absolute; top: 4px; left: 4px; z-index: 3; width: 30px; height: 30px; display: grid; place-items: center;
+  font-size: 15px; line-height: 1; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: pointer; }
+.edit-pen:active { transform: scale(.9); }
+.cards-small main .edit-pen { width: 24px; height: 24px; font-size: 12px; top: 2px; left: 2px; }
+.card.worn .edit-pen { top: 30px; }
