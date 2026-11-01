@@ -458,7 +458,7 @@
   function categoryCard(c) {
     const n = countOf(itemsUnder(c.id));
     const img = groupImageUrl(c.id, CARD_IMG);
-    return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="cat" data-id="${c.id}">✏️</span>
+    return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}" data-sel="c:${c.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="cat" data-id="${c.id}">✏️</span>
       ${img ? `<div class="face" style="background:#fff url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
   }
@@ -469,10 +469,115 @@
     const floc = [x.player_name, x.shirt_number && `n°${x.shirt_number}`].filter(Boolean).join(' ');
     const sub = [x.team || x.platform || x.brand, floc, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     const worn = x.shirt_version === WORN;
-    return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
+    return `<a class="card shape-${esc(cat.shape || 'classique')}${worn ? ' worn' : ''}" href="#/i/${x.id}" data-sel="i:${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
       <div class="face-wrap">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦')}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
+
+  // ---------- Sélection de plusieurs cartes / sous-thèmes / objets ----------
+  let sel = null; // Set de "c:id" (carte), "i:id" (objet), "g:nom" (sous-carte = ses objets)
+  let selGroupItems = () => []; // objets d'une sous-carte de la page ouverte
+  const selBar = document.createElement('div');
+  selBar.className = 'selbar'; selBar.hidden = true;
+  document.body.appendChild(selBar);
+  function startSelect() {
+    sel = new Set();
+    document.body.classList.add('selecting');
+    fab.hidden = true;
+    drawSelBar();
+  }
+  function stopSelect(redraw = true) {
+    if (!sel) return;
+    sel = null;
+    document.body.classList.remove('selecting');
+    selBar.hidden = true;
+    if (redraw) route();
+  }
+  // Ce qui est sélectionné : cartes et objets (les sous-cartes donnent leurs objets)
+  function selection() {
+    const cats = [], its = new Map();
+    for (const k of sel || []) {
+      const [t, ...r] = k.split(':'); const id = r.join(':');
+      if (t === 'c') { const c = categories.find((x) => x.id === id); if (c) cats.push(c); }
+      if (t === 'i') { const x = items.find((y) => y.id === id); if (x) its.set(x.id, x); }
+      if (t === 'g') selGroupItems(id).forEach((x) => its.set(x.id, x));
+    }
+    return { cats, its: [...its.values()] };
+  }
+  function drawSelBar() {
+    const { cats, its } = selection();
+    const parts = [cats.length && plural(cats.length, 'carte'), its.length && plural(its.length, 'objet')].filter(Boolean);
+    selBar.hidden = false;
+    selBar.innerHTML = `<div class="selbar-txt">${parts.length ? parts.join(' + ') + ' choisi(s)' : 'Touche les cartes à choisir'}</div>
+      <div class="selbar-btns"><button class="btn" id="selCancel">Annuler</button>
+      <button class="btn primary" id="selMove" ${parts.length ? '' : 'disabled'}>📦 Déplacer</button>
+      <button class="btn danger" id="selDel" ${parts.length ? '' : 'disabled'}>🗑️</button></div>`;
+    $('#selCancel').onclick = () => stopSelect();
+    $('#selMove').onclick = moveMenu;
+    $('#selDel').onclick = deleteSelection;
+  }
+  function moveMenu() {
+    const { cats, its } = selection();
+    // On ne peut pas mettre une carte dans elle-même ou dans un de ses sous-thèmes
+    const banned = new Set(cats.flatMap((c) => [...subtreeIds(c.id)]));
+    const opts = treeList().filter(({ c }) => !banned.has(c.id));
+    openModal(`<h3>Déplacer vers…</h3>
+      <p class="hint">${[cats.length && plural(cats.length, 'carte'), its.length && plural(its.length, 'objet')].filter(Boolean).join(' et ')}</p>
+      <div class="move-list">
+        ${cats.length && !its.length ? '<button class="btn move-to" data-to="">🏠 Accueil (carte principale)</button>' : ''}
+        ${opts.map(({ c, depth }) => `<button class="btn move-to" data-to="${c.id}" style="padding-left:${14 + depth * 22}px">${esc(c.icon)} ${esc(c.name)}</button>`).join('')}
+      </div>
+      <div class="actions"><button class="btn" id="cancel">Annuler</button></div>`);
+    $('#cancel').onclick = closeModal;
+    modalBody.querySelectorAll('.move-to').forEach((b) => (b.onclick = async () => {
+      const to = b.dataset.to || null;
+      b.disabled = true;
+      try {
+        for (const c of cats) {
+          const { error } = await sb.from('collection_categories').update({ parent_id: to, position: childrenOf(to).length }).eq('id', c.id);
+          if (error) throw error;
+          c.parent_id = to;
+        }
+        for (const x of its) {
+          if (!to) continue;
+          const { error } = await sb.from('collection_items').update({ category_id: to }).eq('id', x.id);
+          if (error) throw error;
+          x.category_id = to;
+        }
+        closeModal(); toast('Déplacé ✅'); stopSelect(false);
+        go(to ? `#/c/${to}` : '#/', true);
+      } catch (err) { fail(err); b.disabled = false; }
+    }));
+  }
+  async function deleteSelection() {
+    const { cats, its } = selection();
+    const inCats = cats.reduce((n, c) => n + countOf(itemsUnder(c.id)), 0);
+    const msg = [cats.length && `${plural(cats.length, 'carte')}${inCats ? ` (avec leurs ${plural(inCats, 'objet')})` : ''}`, its.length && plural(its.length, 'objet')].filter(Boolean).join(' et ');
+    if (!confirm(`Supprimer ${msg} ? C’est définitif.`)) return;
+    try {
+      await deleteItems(its);
+      for (const c of cats) {
+        const ids = subtreeIds(c.id);
+        const photos = items.filter((x) => ids.has(x.category_id)).map((x) => x.photo_path);
+        const { error } = await sb.from('collection_categories').delete().eq('id', c.id);
+        if (error) throw error;
+        removeFiles(photos);
+        categories = categories.filter((k) => !ids.has(k.id));
+        items = items.filter((x) => !ids.has(x.category_id));
+      }
+      toast('Supprimé'); stopSelect();
+    } catch (err) { fail(err); }
+  }
+  app.addEventListener('click', (e) => {
+    if (!sel) return;
+    const card = e.target.closest('[data-sel]');
+    e.preventDefault(); e.stopPropagation();
+    if (!card) return;
+    const k = card.dataset.sel;
+    sel.has(k) ? sel.delete(k) : sel.add(k);
+    card.classList.toggle('selected', sel.has(k));
+    drawSelBar();
+  }, true);
 
   // Petit crayon ✏️ sur chaque carte : modifier sans ouvrir la carte
   let editGroup = null; // (g) => menu de la sous-carte, défini par la page catégorie ouverte
@@ -508,8 +613,10 @@
         <div><b>${total ? money(total) : '–'}</b><span>valeur totale</span></div>
       </div>
       <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans toute la collection">
-        <button class="sort-btn" id="sortBtn">↕ Trier</button></div>
+        <button class="sort-btn" id="sortBtn">↕ Trier</button><button class="sort-btn" id="selBtn" aria-label="Choisir plusieurs">☑️</button></div>
       <div id="results"></div>`;
+    $('#selBtn').onclick = startSelect;
+    selGroupItems = () => [];
     $('#sortBtn').onclick = () => sortMenu('Trier les cartes', [['sort', 'Ordre des cartes', HOME_SORTS]], { sort: prefs.home?.sort || 'manuel' }, (p) => savePrefs('home', p));
     const draw = () => {
       const q = $('#search').value.trim().toLowerCase();
@@ -586,9 +693,11 @@
         <div><b>${total ? money(total) : '–'}</b><span>valeur</span></div>
       </div>
       <div class="searchbar"><input class="search" id="search" type="search" placeholder="🔍 Rechercher dans ${esc(groupName || cat.name)}">
-        <button class="sort-btn" id="sortBtn">↕ Trier</button><button class="sort-btn" id="editBtn" aria-label="Modifier">✏️</button></div>
+        <button class="sort-btn" id="sortBtn">↕ Trier</button><button class="sort-btn" id="editBtn" aria-label="Modifier">✏️</button><button class="sort-btn" id="selBtn" aria-label="Choisir plusieurs">☑️</button></div>
       <div id="results"></div>`;
     $('#editBtn').onclick = () => categoryMenu(cat, path, groupName);
+    $('#selBtn').onclick = startSelect;
+    selGroupItems = (g) => all.filter((x) => groupOf(x, field) === g);
     editGroup = (g) => categoryMenu(cat, [...path, g], groupLabel(g, field), field);
     $('#sortBtn').onclick = () => sortMenu(`Trier et classer « ${cat.name} »`, [
       ['group', 'Ranger les objets en sous-cartes par', GROUP_FIELDS],
@@ -602,7 +711,7 @@
       const img = groupImageUrl(cat.id, [...path, g].join('/'));
       const size = label.length <= 4 ? 1.6 : label.length <= 7 ? 1.25 : label.length <= 10 ? 1 : 0.85;
       const bg = img ? `background:#fff url('${esc(img)}') center / contain no-repeat` : `background:linear-gradient(160deg, ${color}, ${shade(color)})`;
-      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="group" data-id="${esc(g)}">✏️</span>
+      return `<a class="card sub shape-${esc(cat.shape || 'classique')}${n ? '' : ' empty-group'}${img ? ' has-img' : ''}" href="${groupLink(cat.id, [...path, g])}" data-sel="g:${esc(g)}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="group" data-id="${esc(g)}">✏️</span>
         <div class="face" style="${bg}"><span class="tag" style="--fs:${size}">${esc(label)}</span></div>
         <div class="label"><span>${plural(n, 'objet')}</span></div></a>`;
     };
@@ -1189,6 +1298,7 @@
 
   function route() {
     if (!user) return renderAuth();
+    stopSelect(false);
     window.scrollTo(0, 0);
     const [, type, id, ...rest] = location.hash.split('/');
     if (type === 'c') renderCategory(id, rest.filter(Boolean).map(decodeURIComponent));

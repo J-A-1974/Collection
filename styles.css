@@ -368,3 +368,23 @@ body.light .card.worn .label b { color: #b8860b; }
 .edit-pen:active { transform: scale(.9); }
 .cards-small main .edit-pen { width: 24px; height: 24px; font-size: 12px; top: 2px; left: 2px; }
 .card.worn .edit-pen { top: 30px; }
+
+/* Sélection de plusieurs cartes / objets */
+.selecting .edit-pen, .selecting #fab { display: none !important; }
+.selecting main .card[data-sel] .face, .selecting main .card[data-sel] .face-wrap { transition: transform .12s; }
+.selecting main .card[data-sel]::after { content: ''; position: absolute; top: 6px; right: 6px; z-index: 4; width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid #fff; background: rgba(0,0,0,.35); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.selecting main .card.selected::after { content: '✓'; display: grid; place-items: center; background: #22c55e; color: #fff; font-weight: 900; font-size: 16px; }
+.selecting main .card.selected .face { outline: 4px solid #22c55e; outline-offset: 2px; }
+.selecting main .card.selected { transform: scale(.95); }
+.selbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--surface, #1b1435); background: linear-gradient(var(--topbar-1), var(--topbar-2)); backdrop-filter: blur(10px);
+  border-top: 2px solid var(--accent); box-shadow: 0 -6px 20px rgba(0,0,0,.4); }
+.selbar-txt { text-align: center; font-weight: 700; margin-bottom: 8px; }
+.selbar-btns { display: flex; gap: 8px; max-width: 520px; margin: 0 auto; }
+.selbar-btns .btn { flex: 1; margin: 0; }
+.selbar-btns .btn.danger { flex: 0 0 56px; }
+.selbar-btns .btn:disabled { opacity: .45; }
+.selecting main { padding-bottom: 130px; }
+.move-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow: auto; }
+.move-list .btn { text-align: left; margin: 0; }
