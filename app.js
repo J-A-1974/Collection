@@ -579,14 +579,19 @@
         html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${groups.map(subCard).join('')}</div>
           <p class="hint" style="text-align:center;margin-top:16px">Les objets sont rangés par ${esc(fieldName)}. Tu peux changer ça avec le bouton « ↕ Trier ».</p>`;
       } else if (list.length) {
-        html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${list.map(itemCard).join('')}</div>`;
+        html += `${kids.length ? '<h3 class="section-title">Objets</h3>' : ''}<div class="grid">${list.map(itemCard).join('')}
+          <button class="card add add-item"><div class="face">+</div><div class="label"><b>Ajouter un objet</b></div></button></div>`;
       } else if (!kids.length) {
-        html += `<p class="empty">Aucun objet pour l’instant.<br>Appuie sur le bouton + pour en ajouter un.<br><br>
-          <button class="btn" id="addSub2" style="max-width:280px">➕ Créer un sous-thème ici</button></p>`;
+        html += `<p class="empty">Aucun objet pour l’instant.<br><br>
+          <button class="btn primary add-item" style="max-width:280px">➕ Ajouter un objet</button><br><br>
+          <button class="btn" id="addSub2" style="max-width:280px">📁 Créer un sous-thème ici</button></p>`;
+      } else {
+        html += `<div style="text-align:center;margin-top:16px"><button class="btn add-item" style="max-width:280px">➕ Ajouter un objet ici</button></div>`;
       }
       $('#results').innerHTML = html;
       $('#addSub')?.addEventListener('click', () => categoryForm(null, cat.id));
       $('#addSub2')?.addEventListener('click', () => categoryForm(null, cat.id));
+      document.querySelectorAll('#results .add-item').forEach((b) => (b.onclick = () => itemForm(null, cat.id, prefill)));
     };
     $('#search').oninput = draw;
     draw();
