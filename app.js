@@ -527,7 +527,7 @@
     const floc = [x.player_name, x.shirt_number && `n°${x.shirt_number}`].filter(Boolean).join(' ');
     const sub = [x.team || x.platform || x.brand, floc, x.year, x.owner, x.location].filter(Boolean).join(' · ');
     const worn = x.shirt_version === WORN;
-    const shp = x.shape || cat.shape || 'classique';
+    const shp = x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique';
     return `<a class="card shape-${esc(shp)}${worn ? ' worn' : ''}" href="#/i/${x.id}" data-sel="i:${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
       <div class="face-wrap">${faceHtml(shp, cat.color || '#334155', url, cat.icon || '📦', cat)}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
@@ -567,12 +567,26 @@
     const { cats, its } = selection();
     const parts = [cats.length && plural(cats.length, 'carte'), its.length && plural(its.length, 'objet')].filter(Boolean);
     selBar.hidden = false;
-    selBar.innerHTML = `<div class="selbar-txt">${parts.length ? parts.join(' + ') + ' choisi(s)' : 'Touche les cartes à choisir'}</div>
-      <div class="selbar-btns"><button class="btn" id="selCancel">Annuler</button>
-      <button class="btn primary" id="selMove" ${parts.length ? '' : 'disabled'}>📦 Déplacer</button>
-      <button class="btn danger" id="selDel" ${parts.length ? '' : 'disabled'}>🗑️</button></div>`;
+    const none = parts.length ? '' : 'disabled';
+    const allOn = sel.size && sel.size === app.querySelectorAll('[data-sel]').length;
+    selBar.innerHTML = `<div class="selbar-top"><button class="btn" id="selAll">${allOn ? '◻️ Tout enlever' : '☑️ Tout sélectionner'}</button>
+      <div class="selbar-txt">${parts.length ? parts.join(' + ') : 'Touche les cartes à choisir'}</div>
+      <button class="btn" id="selCancel">✖</button></div>
+      <div class="selbar-btns">
+      <button class="btn primary" id="selMove" ${none}>📦<small>Déplacer</small></button>
+      <button class="btn" id="selShape" ${none}>🔷<small>Forme</small></button>
+      <button class="btn" id="selEdit" ${its.length ? '' : 'disabled'}>✏️<small>Modifier</small></button>
+      <button class="btn danger" id="selDel" ${none}>🗑️<small>Supprimer</small></button></div>`;
     $('#selCancel').onclick = () => stopSelect();
+    $('#selAll').onclick = () => {
+      const cards = [...app.querySelectorAll('[data-sel]')];
+      if (allOn) sel.clear(); else cards.forEach((c) => sel.add(c.dataset.sel));
+      cards.forEach((c) => c.classList.toggle('selected', sel.has(c.dataset.sel)));
+      drawSelBar();
+    };
     $('#selMove').onclick = moveMenu;
+    $('#selShape').onclick = bulkShape;
+    $('#selEdit').onclick = bulkEdit;
     $('#selDel').onclick = deleteSelection;
   }
   function moveMenu() {
@@ -609,6 +623,84 @@
       const c = categories.find((k) => k.id === id);
       if (confirm(`Déplacer vers « ${pathName(c)} » ?`)) moveTo(id);
     });
+  }
+  // Forme pour toute la sélection : cartes/sous-thèmes, sous-cartes et références
+  function bulkShape() {
+    const { cats, its } = selection();
+    const groups = [...sel].filter((k) => k.startsWith('g:')).map((k) => k.slice(2));
+    openModal(`<h3>🔷 Forme</h3>
+      ${cats.length || groups.length ? `<div class="lbl">Pour ${[cats.length && plural(cats.length, 'carte'), groups.length && plural(groups.length, 'sous-carte')].filter(Boolean).join(' et ')}</div>
+      <div id="bsCats">${shapePickerHtml(null, '#6366f1', false)}</div>` : ''}
+      ${its.length ? `<div class="lbl">Pour ${plural(its.length, 'référence')}</div><div id="bsItems">${shapePickerHtml(null, '#22c55e', true)}</div>` : ''}
+      <div class="actions"><button class="btn" id="cancel">Annuler</button><button class="btn primary" id="ok">Appliquer</button></div>`);
+    let cs, is;
+    if ($('#bsCats')) wireShapePicker($('#bsCats'), (v) => (cs = v));
+    if ($('#bsItems')) wireShapePicker($('#bsItems'), (v) => (is = v));
+    $('#cancel').onclick = closeModal;
+    $('#ok').onclick = async () => {
+      try {
+        if (cs) {
+          for (const c of cats) {
+            const { error } = await sb.from('collection_categories').update({ shape: cs }).eq('id', c.id);
+            if (error) throw error;
+            c.shape = cs;
+          }
+          const [, , cid, ...rest] = location.hash.split('/');
+          const path = rest.filter(Boolean).map(decodeURIComponent);
+          if (groups.length && cid) {
+            const shapes = { ...(catPrefs(cid).shapes || {}) };
+            groups.forEach((g) => (shapes[[...path, g].join('/')] = cs));
+            await savePrefs(cid, { shapes });
+          }
+        }
+        if (is !== undefined) {
+          for (const x of its) {
+            const { error } = await sb.from('collection_items').update({ shape: is || null }).eq('id', x.id);
+            if (error) throw error;
+            x.shape = is || null;
+          }
+        }
+        closeModal(); toast('Forme changée ✅'); stopSelect();
+      } catch (err) { fail(err); }
+    };
+  }
+  // Modifier plusieurs références d'un coup : seuls les champs remplis sont changés
+  function bulkEdit() {
+    const { its } = selection();
+    openModal(`<h3>✏️ Modifier ${plural(its.length, 'référence')}</h3>
+      <p class="hint">Remplis seulement ce que tu veux changer. Les champs laissés vides ne bougent pas.</p>
+      <form id="bf">
+        <div class="row"><div><label>Propriétaire</label>${selectOther('owner', withUsed(OWNERS, 'owner'), null, 'Nom')}</div>
+          <div><label>Lieu</label>${selectOther('location', withUsed(PLACES, 'location'), null, 'Nom du lieu')}</div></div>
+        <div class="row"><div><label>Marque</label>${selectOther('brand', withUsed(brandsFor('autre'), 'brand'), null, 'Nom de la marque')}</div>
+          <div><label>Année</label><input name="year" inputmode="numeric" placeholder="Ex. : 1996"></div></div>
+        <div class="row"><div><label>État</label><select name="condition"><option value=""></option>${CONDITIONS.map((c) => `<option>${c}</option>`).join('')}</select></div>
+          <div><label>Tarif (€)</label><input name="estimated_value" inputmode="decimal"></div></div>
+        <div class="row"><div><label>Obtenu le</label><input name="acquired_on" type="date"></div><div></div></div>
+        <div class="actions"><button type="button" class="btn" id="cancel">Annuler</button><button class="btn primary" id="save">Appliquer</button></div>
+      </form>`);
+    wireOther($('#bf'));
+    $('#cancel').onclick = closeModal;
+    $('#bf').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target));
+      const patch = {};
+      for (const k of ['owner', 'location', 'brand']) { const v = otherValue(fd, k); if (v) patch[k] = v; }
+      if (fd.year) patch.year = numOrNull(fd.year);
+      if (fd.estimated_value) patch.estimated_value = numOrNull(fd.estimated_value);
+      if (fd.condition) patch.condition = fd.condition;
+      if (fd.acquired_on) patch.acquired_on = fd.acquired_on;
+      if (!Object.keys(patch).length) return toast('Rien à changer');
+      $('#save').disabled = true;
+      try {
+        for (const x of its) {
+          const { error } = await sb.from('collection_items').update(patch).eq('id', x.id);
+          if (error) throw error;
+          Object.assign(x, patch);
+        }
+        closeModal(); toast(`${plural(its.length, 'référence')} modifiée(s) ✅`); stopSelect();
+      } catch (err) { fail(err); $('#save').disabled = false; }
+    };
   }
   async function deleteSelection() {
     const { cats, its } = selection();
@@ -854,7 +946,7 @@
       gp.push(groupOf(x, f));
     }
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
-      <div class="hero card shape-${esc(x.shape || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat.id ? cat : null)}</div>
+      <div class="hero card shape-${esc(x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat.id ? cat : null)}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
@@ -965,6 +1057,7 @@
           <span id="pickTxt">${url ? '' : '📷 Prendre ou choisir une photo'}</span>
           <input type="file" accept="image/*" id="photo">
         </label>
+        ${url ? '<button type="button" class="btn" id="adjPhoto" style="width:100%;margin-top:8px">✂️ Ajuster la photo actuelle</button>' : ''}
         <p class="hint">La photo est réduite automatiquement pour prendre très peu de place.</p>
         <details class="shape-details"><summary>🔷 Forme de cette référence${x?.shape ? ` : ${esc((SHAPES.find((k) => k[0] === x.shape) || [])[1] || '')}` : ' : comme la carte'}</summary>
           <div id="itemShapes"></div></details>
@@ -1079,11 +1172,20 @@
       $('#pickTxt').textContent = 'Réduction de la photo…';
       try {
         blob = await compressImage(await cropImage(file), { keepAlpha: true });
+        if (!$('#pick')) return;
         $('#pick').style.backgroundImage = `url('${URL.createObjectURL(blob)}')`;
         $('#pickTxt').textContent = '';
         toast(`Photo réduite : ${Math.max(1, Math.round(blob.size / 1024))} Ko`);
       } catch (err) { $('#pickTxt').textContent = '📷 Photo illisible, réessaie'; fail(err); }
     };
+    $('#adjPhoto')?.addEventListener('click', async () => {
+      try {
+        const f = await fetchImage(blob ? URL.createObjectURL(blob) : url);
+        blob = await compressImage(await cropImage(f), { keepAlpha: true });
+        $('#pick').style.backgroundImage = `url('${URL.createObjectURL(blob)}')`;
+        toast('Photo ajustée, appuie sur Enregistrer');
+      } catch (err) { fail(err); }
+    });
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target));
@@ -1125,7 +1227,16 @@
   function imagePickerHtml(id, title, hasImg) {
     return `<label class="btn file-btn">🖼️ ${title}<input type="file" accept="image/*,.svg" id="${id}File"></label>
       <div style="display:flex;gap:8px"><input class="input" id="${id}Url" type="url" placeholder="…ou colle le lien d’une image"><button type="button" class="btn primary" id="${id}UrlOk" style="flex:0 0 auto">OK</button></div>
-      ${hasImg ? `<button type="button" class="btn" id="${id}Reset">Enlever l’image</button>` : ''}`;
+      ${hasImg ? `<button type="button" class="btn" id="${id}Adjust">✂️ Ajuster l’image actuelle</button><button type="button" class="btn" id="${id}Reset">Enlever l’image</button>` : ''}`;
+  }
+  // Récupère une image déjà enregistrée pour la recadrer de nouveau
+  async function fetchImage(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error();
+      const b = await r.blob();
+      return new File([b], 'image', { type: b.type || 'image/png' });
+    } catch { throw new Error('Impossible de reprendre cette image (lien d’un autre site ?). Importe-la de nouveau.'); }
   }
   async function imageFromFile(file) {
     file = await cropImage(file);
@@ -1136,7 +1247,15 @@
     return { path: await uploadFile(await compressImage(file, { maxSize: 400, maxKB: 40, keepAlpha: true })) };
   }
   // onPick(valeur) : valeur = { path } | { url } | null (enlever)
-  function wireImagePicker(id, onPick) {
+  function wireImagePicker(id, onPick, currentUrl = null) {
+    const adj = $(`#${id}Adjust`);
+    if (adj) adj.onclick = async () => {
+      try {
+        const f = await fetchImage(currentUrl);
+        if (f.type === 'image/svg+xml') return toast('Une image SVG ne se recadre pas : elle reste toujours nette');
+        toast('Envoi de l’image…'); await onPick(await imageFromFile(f));
+      } catch (err) { fail(err); }
+    };
     $(`#${id}File`).onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -1160,6 +1279,8 @@
         <label>Forme de cette carte</label><p class="hint">Elle ne change que cette carte. Ses sous-thèmes, sous-cartes et références peuvent avoir leur propre forme.</p>
         <div class="shapes">${SHAPES.map(([k, l]) => `<button type="button" data-s="${k}" class="${k === shape ? 'on' : ''}">
           <div class="card shape-${k}"><div class="face" style="background:${esc(colorBg(color))}"></div></div>${l}</button>`).join('')}</div>
+        <label>Forme de ses références (objets)</label><p class="hint">Ex. : un sous-thème rond avec des références carrées.</p>
+        <div id="itemShapeDef"></div>
         <label>Icône</label>
         <div class="stack">${imagePickerHtml('ic', '📷 Mon image comme icône (JPEG, PNG, SVG)', cat && groupImageUrl(cat.id, ICON_IMG))}</div>
         <p class="hint" id="icState">${cat && groupImageUrl(cat.id, ICON_IMG) ? 'Ton image est l’icône actuelle. Touche un emoji ou « Enlever l’image » pour revenir à un emoji.' : '…ou choisis un emoji :'}</p>${EMOJI_GROUPS.map(([t, list]) => `<div class="hint">${t}</div>
@@ -1178,6 +1299,9 @@
       modalBody.querySelectorAll(`[data-${attr}]`).forEach((o) => o.classList.toggle('on', o === b));
     }));
     pick('s', (v) => (shape = v));
+    let itemShapeDef = cat ? catPrefs(cat.id).itemShape || '' : '';
+    $('#itemShapeDef').innerHTML = shapePickerHtml(itemShapeDef, color, true);
+    wireShapePicker($('#itemShapeDef'), (v) => (itemShapeDef = v));
     let newIcon; // undefined = pas de changement, null = enlever
     pick('e', (v) => {
       icon = v;
@@ -1188,12 +1312,12 @@
       newIcon = v;
       modalBody.querySelectorAll('[data-e]').forEach((o) => o.classList.remove('on'));
       $('#icState').textContent = v ? '✅ Image prête comme icône, appuie sur Enregistrer' : '✅ L’icône redeviendra un emoji, appuie sur Enregistrer';
-    });
+    }, cat && groupImageUrl(cat.id, ICON_IMG));
     let newImg; // undefined = pas de changement
     wireImagePicker('ci', async (v) => {
       newImg = v;
       $('#ciState').textContent = v ? '✅ Image prête, appuie sur Enregistrer' : '✅ L’image sera enlevée, appuie sur Enregistrer';
-    });
+    }, cat && groupImageUrl(cat.id, CARD_IMG));
     pick('c', (v) => {
       color = v;
       modalBody.querySelectorAll('.shapes .face').forEach((f) => (f.style.background = colorBg(v)));
@@ -1215,6 +1339,7 @@
         categories = cat ? categories.map((c) => (c.id === data.id ? data : c)) : [...categories, data];
         if (newImg !== undefined) await setGroupImage(data.id, CARD_IMG, newImg);
         if (newIcon !== undefined) await setGroupImage(data.id, ICON_IMG, newIcon);
+        if (itemShapeDef !== (catPrefs(data.id).itemShape || '')) await savePrefs(data.id, { itemShape: itemShapeDef || null });
         closeModal();
         toast(cat ? 'Modifié' : parent ? 'Sous-thème créé' : 'Catégorie créée');
         cat ? route() : go(`#/c/${data.id}`);
@@ -1295,7 +1420,7 @@
     wireImagePicker('g', async (v) => {
       await setGroupImage(cat.id, imgKey, v);
       closeModal(); toast(v ? 'Image de la carte changée' : 'Image enlevée'); route();
-    });
+    }, hasImg);
     $('#delCat').onclick = async () => {
       if (!confirm(n || nSub ? `Supprimer « ${cat.name} »${nSub ? `, ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` et ${plural(n, 'objet')}` : ''} ? C’est définitif.` : `Supprimer « ${cat.name} » ?`)) return;
       try {
