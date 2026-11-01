@@ -550,7 +550,10 @@
     // Objets rangés directement dans cette carte, filtrés par les sous-cartes déjà ouvertes
     const all = items.filter((x) => x.category_id === id && path.every((g, i) => groupOf(x, chain[i]) === g));
     const used = field ? [...new Set(all.map((x) => groupOf(x, field)))].filter((g) => g !== NONE) : [];
-    const preset = field === 'platform' ? FEATURED_PLATFORMS : field === 'team_type' ? TEAM_TYPES : [];
+    // Sous-cartes proposées d'office (PS1…, Équipe nationale…), sauf celles que José a supprimées (si vides)
+    const hiddenGroups = cp.hidden || [];
+    const preset = (field === 'platform' ? FEATURED_PLATFORMS : field === 'team_type' ? TEAM_TYPES : [])
+      .filter((g) => !hiddenGroups.includes([...path, g].join('/')) || all.some((x) => groupOf(x, field) === g));
     const extra = used.filter((v) => !preset.includes(v));
     extra.sort(field === 'price' ? (a, b) => PRICE_RANGES.indexOf(a) - PRICE_RANGES.indexOf(b) : cmpText);
     const groups = [...preset, ...extra];
@@ -986,6 +989,7 @@
         ${group && groupField && RENAMABLE.includes(groupField) && path[path.length - 1] !== NONE ? `<button class="btn" id="renGroup">✏️ Renommer « ${esc(groupName)} »</button>` : ''}
         <button class="btn" id="editCat">✏️ Modifier « ${esc(cat.name)} » : nom, forme, icône, couleur</button>
         <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
+        ${!group && (catPrefs(cat.id).hidden || []).length ? `<button class="btn" id="unhide">↩️ Remettre les ${plural(catPrefs(cat.id).hidden.length, 'sous-carte')} supprimée(s)</button>` : ''}
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
         ${group ? `<button class="btn danger" id="delGroup">🗑️ Supprimer la sous-carte « ${esc(groupName)} » et ses ${plural(groupItems.length, 'objet')}</button>` : ''}
         <button class="btn danger" id="delCat">🗑️ Supprimer ${cat.parent_id ? 'le sous-thème' : 'la carte'} « ${esc(cat.name)} »${nSub ? ` et ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` (${plural(n, 'objet')})` : ''}</button>
@@ -993,11 +997,14 @@
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    $('#unhide')?.addEventListener('click', async () => { await savePrefs(cat.id, { hidden: [] }); closeModal(); toast('Sous-cartes remises'); route(); });
     $('#delGroup')?.addEventListener('click', async () => {
-      if (!groupItems.length) { closeModal(); return toast('Cette sous-carte est vide : elle disparaît dès qu’elle n’a plus d’objet'); }
-      if (!confirm(`Supprimer la sous-carte « ${groupName} » et ses ${plural(groupItems.length, 'objet')} ? C’est définitif.`)) return;
+      if (!confirm(groupItems.length ? `Supprimer la sous-carte « ${groupName} » et ses ${plural(groupItems.length, 'objet')} ? C’est définitif.` : `Supprimer la sous-carte « ${groupName} » ?`)) return;
       try {
         await deleteItems(groupItems);
+        // Retenir qu'elle est supprimée, sinon les sous-cartes d'office (PS1…, Club…) reviendraient
+        const hidden = catPrefs(cat.id).hidden || [];
+        if (!hidden.includes(group)) await savePrefs(cat.id, { hidden: [...hidden, group] });
         const next = { ...groupImages() }; delete next[`${cat.id}|${group}`];
         await saveSettings({ group_images: next }).catch(() => {});
         closeModal(); toast('Sous-carte supprimée');
