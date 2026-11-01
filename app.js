@@ -32,6 +32,10 @@
   // Taille des cartes, retenue sur ce téléphone
   let cardSize = 'grand';
   try { cardSize = localStorage.getItem('cardSize') || 'grand'; } catch {}
+  // Mode lecture : pour montrer la collection sans que personne ne puisse rien modifier
+  let readMode = false;
+  try { readMode = localStorage.getItem('readMode') === '1'; } catch {}
+  const readCode = () => String(prefs.__readCode || '1234');
   let bgStill = false;
   try { bgStill = localStorage.getItem('bgStill') === '1'; } catch {}
   const OWNERS = ['Papa', 'Maman', 'Anaïs', 'Elodie'];
@@ -133,7 +137,14 @@
   };
   const otherValue = (fd, name) => (fd[name] === '__autre' ? (fd[name + '__autre'] || '').trim() : fd[name]) || null;
   const CONDITIONS = ['Neuf (sous blister)', 'Neuf', 'Très bon', 'Bon', 'Moyen', 'Abîmé'];
+  // Icônes dessinées (il n'existe pas d'emoji « mug » ni « service de vaisselle »)
+  const CUSTOM_ICONS = {
+    'svg:mug': '<svg viewBox="0 0 64 64" class="ico-svg"><path d="M22 4c-3 4 3 5 0 9M31 4c-3 4 3 5 0 9M40 4c-3 4 3 5 0 9" stroke="#cbd5e1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M47 25h4a9 9 0 0 1 0 18h-4" fill="none" stroke="#e11d74" stroke-width="6"/><path d="M12 17h36v31a10 10 0 0 1-10 10H22a10 10 0 0 1-10-10z" fill="#ff4f8b"/><rect x="12" y="15" width="36" height="7" rx="3.5" fill="#ffd1e1"/><path d="M19 30h5v18h-5z" fill="#fff" opacity=".35"/></svg>',
+    'svg:service': '<svg viewBox="0 0 64 64" class="ico-svg"><ellipse cx="32" cy="51" rx="29" ry="9" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="2.5"/><ellipse cx="32" cy="50" rx="19" ry="5" fill="#bae6fd"/><path d="M6 22h22v13a8 8 0 0 1-8 8h-6a8 8 0 0 1-8-8z" fill="#f59e0b"/><path d="M28 25h3a5 5 0 0 1 0 10h-3" fill="none" stroke="#f59e0b" stroke-width="3.5"/><rect x="5" y="20" width="24" height="5" rx="2.5" fill="#fde68a"/><path d="M35 31h25a12.5 12.5 0 0 1-25 0z" fill="#22c55e"/><rect x="34" y="28" width="27" height="4" rx="2" fill="#86efac"/><path d="M50 8v12M53 8v12M56 8v12M50 20h6v2a3 3 0 0 1-3 3 3 3 0 0 1-3-3z M53 25v4" stroke="#64748b" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+  };
+  const glyph = (icon) => CUSTOM_ICONS[icon] || esc(icon);
   const EMOJI_GROUPS = [
+    ['Vaisselle', ['svg:mug', 'svg:service', '☕', '🍵', '🫖', '🍽️', '🥣', '🥄', '🍴', '🔪', '🥢', '🥛', '🍷', '🍸', '🍹', '🍺', '🥂', '🫙', '🧂', '🍶']],
     ['Jeux et jouets', ['🎮', '🕹️', '👾', '🎰', '🧸', '🪀', '🪁', '🧩', '🎲', '♟️', '🃏', '🀄', '🎴', '🪅', '🪆', '🤖', '🦸', '🦹', '🧙', '🧌', '👸', '🦖', '🦄', '🐉', '🚂', '🚗', '🏎️', '🚓', '🚒', '🚜', '✈️', '🚀', '🛸', '⛵', '🏰']],
     ['Sport', ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🏓', '🏸', '🥊', '⛳', '🏒', '🎿', '🛹', '🚲', '🏁', '👕', '🎽', '👟', '🧢', '🏆', '🥇', '🏅', '🎖️']],
     ['Pins, badges, objets', ['📌', '📍', '🔘', '🎗️', '💎', '💍', '👑', '⌚', '🕶️', '👜', '🎒', '🔑', '🗝️', '🪙', '💰', '🧲', '🔮', '🏺', '🗿', '🎁', '📦', '🧳', '🖼️', '🪞']],
@@ -295,7 +306,7 @@
   // ---------- Apparence ----------
   function applyLook() {
     const t = settings.theme || 'synthwave';
-    document.body.className = `theme-${t}${LIGHT_THEMES.includes(t) ? ' light' : ''}${cardSize === 'petit' ? ' cards-small' : ''}${bgStill ? ' still' : ''}`;
+    document.body.className = `theme-${t}${LIGHT_THEMES.includes(t) ? ' light' : ''}${cardSize === 'petit' ? ' cards-small' : ''}${bgStill ? ' still' : ''}${readMode ? ' readonly' : ''}`;
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', LIGHT_THEMES.includes(t) ? '#ffffff' : '#0f0a1f');
     const bg = $('#bg');
     const bgUrl = settings.theme === 'photo' && settings.bg_path && urlCache.get(settings.bg_path);
@@ -376,7 +387,7 @@
         { name: '1/43', icon: '🚗', color: '#00e676', shape: 'appli' }] }] },
     { key: 'vaisselle', name: 'Vaisselle', icon: '☕', color: 'grad:#1de9b6,#2979ff', shape: 'ballon', kids: [
       { name: 'Disney', icon: '🏰', color: 'grad:#2979ff,#d500f9', shape: 'ecusson', kids: [
-        { name: 'Bols', icon: '🥣', color: '#ff9100' }, { name: 'Mugs', icon: '☕', color: '#ff4081' }, { name: 'Assiettes', icon: '🍽️', color: '#00b0ff' },
+        { name: 'Bols', icon: '🥣', color: '#ff9100' }, { name: 'Mugs', icon: 'svg:mug', color: '#ff4081' }, { name: 'Assiettes', icon: '🍽️', color: '#00b0ff' },
         { name: 'Couverts', icon: '🍴', color: '#64748b' }, { name: 'Verres', icon: '🥛', color: '#1de9b6' }] }] },
     { key: 'musique', name: 'Musique et films', icon: '🎵', color: 'grad:#ff1744,#d500f9,#2979ff', shape: 'bouton', kids: [
       { name: 'CD', icon: '💿', color: '#00b0ff', shape: 'ballon' }, { name: 'Vinyles', icon: '🎶', color: '#111111', shape: 'ballon' },
@@ -406,7 +417,7 @@
 
   // ---------- Écrans ----------
   function setHeader({ back = false, fabVisible = true } = {}) {
-    backBtn.hidden = !back; menuBtn.hidden = false; fab.hidden = !fabVisible;
+    backBtn.hidden = !back; menuBtn.hidden = false; fab.hidden = !fabVisible || readMode;
   }
 
   // Une carte : la forme (cartouche, maillot…) avec la photo ou l'icône, et le texte dessous
@@ -414,11 +425,11 @@
   const ICON_IMG = '__icone';
   function icHtml(c, fallback = '📦') {
     const img = c?.id && groupImageUrl(c.id, ICON_IMG);
-    return img ? `<img class="ico-img" src="${esc(img)}" alt="">` : esc(c?.icon || fallback);
+    return img ? `<img class="ico-img" src="${esc(img)}" alt="">` : glyph(c?.icon || fallback);
   }
   function faceHtml(shape, color, url, icon, cat = null) {
     const style = url ? `background-image:url('${esc(url)}')` : `background:${esc(colorBg(color))}`;
-    return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${cat ? icHtml(cat) : esc(icon)}</span>`}</div>`;
+    return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${cat ? icHtml(cat) : glyph(icon)}</span>`}</div>`;
   }
   // Couleur d'une sous-carte selon la famille de console ou la marque
   function groupColor(v) {
@@ -951,7 +962,7 @@
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
       <div class="fields">
-        ${field('Catégorie', `${cat.icon || ''} ${pathName(cat)}`)}
+        ${field('Catégorie', `${CUSTOM_ICONS[cat.icon] ? '' : cat.icon || ''} ${pathName(cat)}`)}
         ${field('Propriétaire', x.owner)}
         ${field('Type', x.team_type)}
         ${field(x.team_type === 'Club' ? 'Club' : x.team_type === 'Équipe nationale' ? 'Pays' : 'Équipe', x.team)}
@@ -1284,7 +1295,7 @@
         <label>Icône</label>
         <div class="stack">${imagePickerHtml('ic', '📷 Mon image comme icône (JPEG, PNG, SVG)', cat && groupImageUrl(cat.id, ICON_IMG))}</div>
         <p class="hint" id="icState">${cat && groupImageUrl(cat.id, ICON_IMG) ? 'Ton image est l’icône actuelle. Touche un emoji ou « Enlever l’image » pour revenir à un emoji.' : '…ou choisis un emoji :'}</p>${EMOJI_GROUPS.map(([t, list]) => `<div class="hint">${t}</div>
-          <div class="emojis">${list.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${e}</button>`).join('')}</div>`).join('')}
+          <div class="emojis">${list.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${glyph(e)}</button>`).join('')}</div>`).join('')}
         <label>Couleur</label>${[['Classiques', COLORS], ['Vives', VIVID_COLORS], ['Mélanges', GRADIENTS]].map(([t, list]) => `<div class="hint">${t}</div>
           <div class="colors">${list.map((c) => `<button type="button" data-c="${c}" style="background:${colorBg(c)}" class="${c === color ? 'on' : ''}"></button>`).join('')}</div>`).join('')}
         <label>Image de la carte (facultatif)</label>
@@ -1438,9 +1449,35 @@
   }
 
   // ---------- Menus ----------
+  function setReadMode(on) {
+    readMode = on;
+    try { localStorage.setItem('readMode', on ? '1' : '0'); } catch {}
+    applyLook(); closeModal(); route();
+    toast(on ? '👀 Mode lecture activé : rien ne peut être modifié' : '✏️ Mode normal : tu peux tout modifier', 4000);
+  }
+  function readMenu() {
+    openModal(`<h3>👀 Mode lecture</h3>
+      <p class="hint">On peut tout regarder, mais rien modifier. Pour revenir au mode normal, tape le code.</p>
+      <form id="rf"><label>Code</label><input name="code" type="password" inputmode="numeric" autocomplete="off" required>
+        <div class="actions"><button type="button" class="btn" id="cancel">Fermer</button><button class="btn primary">🔓 Quitter le mode lecture</button></div></form>`);
+    $('#cancel').onclick = closeModal;
+    $('#rf').onsubmit = (e) => {
+      e.preventDefault();
+      if (new FormData(e.target).get('code').trim() === readCode()) setReadMode(false);
+      else { toast('Code incorrect'); e.target.code.value = ''; }
+    };
+  }
+  // En mode lecture, le bouton ⋯ ouvre seulement la sortie du mode lecture
+  menuBtn.addEventListener('click', (e) => { if (readMode) { e.stopImmediatePropagation(); readMenu(); } }, true);
+  app.addEventListener('click', (e) => {
+    if (readMode && e.target.closest('.edit-pen, .card.add, .add-item, #addSub2, #addSub3, #editBtn, #selBtn, .detail .actions')) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
   function mainMenu() {
     openModal(`<h3>Menu</h3>
       <div class="stack">
+        <button class="btn primary" id="readOn">👀 Mode lecture (pour montrer ma collection)</button>
+        <button class="btn" id="readCode">🔢 Code du mode lecture : ${'•'.repeat(readCode().length)}</button>
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
         <button class="btn" id="newCat">➕ Nouvelle catégorie</button>
         <p class="hint">Connecté : ${esc(user.email)}</p>
@@ -1450,6 +1487,18 @@
     $('#cancel').onclick = closeModal;
     $('#look').onclick = lookMenu;
     $('#newCat').onclick = () => categoryForm();
+    $('#readOn').onclick = () => {
+      if (confirm(`Passer en mode lecture ? Pour en sortir, il faudra taper le code (${readCode()}).`)) setReadMode(true);
+    };
+    $('#readCode').onclick = async () => {
+      const v = (prompt('Nouveau code (au moins 4 chiffres) :', readCode()) || '').trim();
+      if (!v) return;
+      if (!/^\d{4,}$/.test(v)) return toast('Le code doit avoir au moins 4 chiffres');
+      prefs = { ...prefs, __readCode: v };
+      try { localStorage.setItem('viewPrefs', JSON.stringify(prefs)); } catch {}
+      try { await sb.from('collection_settings').upsert({ user_id: user.id, view_prefs: prefs }); } catch {}
+      toast('Code changé ✅'); closeModal();
+    };
     $('#logout').onclick = async () => { await sb.auth.signOut(); closeModal(); };
   }
 

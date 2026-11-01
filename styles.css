@@ -420,3 +420,12 @@ body.light .crop-dlg { background: #fff; }
 .tree-pick small { opacity: .6; }
 .shape-details { margin: 6px 0; }
 .shape-details summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+
+/* Icônes dessinées */
+.ico-svg { width: 1em; height: 1em; display: inline-block; vertical-align: -0.12em; }
+.emojis button .ico-svg { width: 1.3em; height: 1.3em; }
+/* Mode lecture : tous les boutons de modification sont cachés */
+.readonly .edit-pen, .readonly #fab, .readonly main .card.add, .readonly .add-item, .readonly #addSub2, .readonly #addSub3,
+.readonly #editBtn, .readonly #selBtn, .readonly .detail .actions, .readonly .selbar { display: none !important; }
+.readonly .topbar::after { content: '👀 Mode lecture'; position: absolute; left: 50%; bottom: -24px; transform: translateX(-50%); z-index: 5;
+  background: var(--accent); color: #200f00; font-weight: 800; font-size: .72rem; padding: 3px 10px; border-radius: 0 0 10px 10px; white-space: nowrap; }
