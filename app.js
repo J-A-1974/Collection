@@ -236,51 +236,128 @@
   const cropDlg = document.createElement('dialog');
   cropDlg.className = 'crop-dlg';
   document.body.appendChild(cropDlg);
+  // Détourage : enlève le fond (bibliothèque chargée seulement quand on s'en sert)
+  let bgLib = null;
+  async function removeBg(blob, onProgress) {
+    if (!bgLib) {
+      try { bgLib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.8/+esm'); }
+      catch { bgLib = await import('https://esm.sh/@imgly/background-removal@1.5.8'); }
+    }
+    const fn = bgLib.removeBackground || bgLib.default;
+    return fn(blob, {
+      model: 'isnet_quint8', output: { format: 'image/png' },
+      progress: (key, cur, tot) => onProgress && tot && onProgress(Math.round((cur / tot) * 100), key),
+    });
+  }
+  const loadBitmap = async (b) => {
+    try { return await createImageBitmap(b, { imageOrientation: 'from-image' }); }
+    catch { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(b); }); }
+  };
   async function cropImage(file) {
     if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '')) return file; // un SVG garde sa netteté
-    let img;
-    try { img = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
-    catch { img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
+    let src = file;
+    let img = await loadBitmap(file);
     const V = 280; // taille de l'aperçu
-    const contain = Math.min(V / img.width, V / img.height), cover = Math.max(V / img.width, V / img.height);
-    let k = cover, x = (V - img.width * k) / 2, y = (V - img.height * k) / 2;
+    let contain, cover, kMin, kMax, k, x, y;
+    const fit = (mode) => {
+      contain = Math.min(V / img.width, V / img.height); cover = Math.max(V / img.width, V / img.height);
+      kMin = contain * 0.6; kMax = cover * 4;
+      k = mode === 'contain' ? contain : cover; x = (V - img.width * k) / 2; y = (V - img.height * k) / 2;
+    };
+    fit('cover');
+    let crop = null; // cadre de rognage {x, y, w, h} en pixels de l'aperçu, ou null = carré entier
     cropDlg.innerHTML = `<h3>Ajuster l’image</h3>
-      <p class="hint">Fais glisser l’image avec le doigt et règle la taille avec le curseur.</p>
+      <p class="hint" id="cropHint">Fais glisser l’image avec le doigt et règle la taille avec le curseur.</p>
       <canvas id="cropCv" width="${V * 2}" height="${V * 2}" style="width:${V}px;height:${V}px"></canvas>
-      <div class="crop-zoom"><span>➖</span><input type="range" id="cropZ" min="0" max="1000" value="${Math.round(1000 * Math.log(cover / (contain * 0.6)) / Math.log((cover * 4) / (contain * 0.6)))}"><span>➕</span></div>
+      <div class="crop-zoom"><span>➖</span><input type="range" id="cropZ" min="0" max="1000"><span>➕</span></div>
       <div class="crop-quick"><button type="button" class="btn" id="cropFit">Image entière</button><button type="button" class="btn" id="cropFill">Remplir</button></div>
+      <div class="crop-quick"><button type="button" class="btn" id="cropRect">✂️ Rogner</button><button type="button" class="btn" id="cropBg">🪄 Enlever le fond</button></div>
+      <p class="hint" id="cropMsg" hidden></p>
       <div class="actions"><button type="button" class="btn" id="cropAsIs">Garder telle quelle</button><button type="button" class="btn primary" id="cropOk">Valider</button></div>`;
-    const cv = cropDlg.querySelector('#cropCv'), ctx = cv.getContext('2d');
-    const kMin = contain * 0.6, kMax = cover * 4;
+    const q = (sel) => cropDlg.querySelector(sel);
+    const cv = q('#cropCv'), ctx = cv.getContext('2d'), z = q('#cropZ');
     const draw = () => {
       ctx.clearRect(0, 0, cv.width, cv.height);
-      ctx.fillStyle = '#ffffff22'; ctx.fillRect(0, 0, cv.width, cv.height);
       ctx.drawImage(img, x * 2, y * 2, img.width * k * 2, img.height * k * 2);
+      if (crop) {
+        ctx.fillStyle = 'rgba(0,0,0,.55)';
+        ctx.beginPath(); ctx.rect(0, 0, cv.width, cv.height); ctx.rect(crop.x * 2, crop.y * 2, crop.w * 2, crop.h * 2); ctx.fill('evenodd');
+        ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 4; ctx.strokeRect(crop.x * 2, crop.y * 2, crop.w * 2, crop.h * 2);
+        ctx.fillStyle = '#ffd34d';
+        for (const [cx, cy] of corners()) { ctx.beginPath(); ctx.arc(cx * 2, cy * 2, 14, 0, Math.PI * 2); ctx.fill(); }
+      }
     };
-    const zoomTo = (nk) => { const cx = V / 2, cy = V / 2; x = cx - (cx - x) * (nk / k); y = cy - (cy - y) * (nk / k); k = nk; draw(); };
-    const z = cropDlg.querySelector('#cropZ');
-    const sliderK = () => kMin * Math.pow(kMax / kMin, z.value / 1000);
+    const corners = () => [[crop.x, crop.y], [crop.x + crop.w, crop.y], [crop.x, crop.y + crop.h], [crop.x + crop.w, crop.y + crop.h]];
     const setSlider = () => { z.value = Math.round(1000 * Math.log(k / kMin) / Math.log(kMax / kMin)); };
-    z.oninput = () => zoomTo(sliderK());
-    cropDlg.querySelector('#cropFit').onclick = () => { k = contain; x = (V - img.width * k) / 2; y = (V - img.height * k) / 2; setSlider(); draw(); };
-    cropDlg.querySelector('#cropFill').onclick = () => { k = cover; x = (V - img.width * k) / 2; y = (V - img.height * k) / 2; setSlider(); draw(); };
+    const zoomTo = (nk) => { const c = V / 2; x = c - (c - x) * (nk / k); y = c - (c - y) * (nk / k); k = nk; draw(); };
+    setSlider();
+    z.oninput = () => zoomTo(kMin * Math.pow(kMax / kMin, z.value / 1000));
+    q('#cropFit').onclick = () => { fit('contain'); setSlider(); draw(); };
+    q('#cropFill').onclick = () => { fit('cover'); setSlider(); draw(); };
+    q('#cropRect').onclick = () => {
+      crop = crop ? null : { x: 30, y: 30, w: V - 60, h: V - 60 };
+      q('#cropRect').classList.toggle('primary', !!crop);
+      q('#cropHint').textContent = crop ? 'Tire les ronds jaunes pour choisir la partie à garder. Glisse dans le cadre pour le déplacer.' : 'Fais glisser l’image avec le doigt et règle la taille avec le curseur.';
+      draw();
+    };
+    q('#cropBg').onclick = async () => {
+      const b = q('#cropBg'), msg = q('#cropMsg');
+      b.disabled = true; msg.hidden = false;
+      msg.textContent = '🪄 Détourage en cours… La 1re fois, le téléphone télécharge l’outil (environ 40 Mo), ça peut prendre une minute.';
+      try {
+        const out = await removeBg(src, (pc) => { msg.textContent = `🪄 Préparation de l’outil… ${pc} %`; });
+        msg.textContent = '🪄 Presque fini…';
+        src = out; img = await loadBitmap(out);
+        fit('contain'); setSlider(); draw();
+        msg.textContent = '✅ Fond enlevé ! Le damier montre la partie transparente.';
+      } catch (err) {
+        console.error(err);
+        msg.textContent = '😕 Le détourage n’a pas marché sur cet appareil. Astuce : sur ton téléphone, reste appuyé sur l’objet dans la photo, enregistre l’image détourée, puis importe-la ici.';
+      }
+      b.disabled = false;
+    };
     let drag = null;
-    cv.style.touchAction = 'none';
-    cv.onpointerdown = (e) => { drag = { px: e.clientX, py: e.clientY, x, y }; cv.setPointerCapture(e.pointerId); };
-    cv.onpointermove = (e) => { if (!drag) return; x = drag.x + e.clientX - drag.px; y = drag.y + e.clientY - drag.py; draw(); };
+    const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    cv.onpointerdown = (e) => {
+      const [px, py] = pos(e);
+      cv.setPointerCapture(e.pointerId);
+      if (crop) {
+        const ci = corners().findIndex(([cx, cy]) => Math.hypot(cx - px, cy - py) < 24);
+        if (ci >= 0) { drag = { mode: 'corner', ci, crop: { ...crop } }; return; }
+        if (px > crop.x && px < crop.x + crop.w && py > crop.y && py < crop.y + crop.h) { drag = { mode: 'move', px, py, crop: { ...crop } }; return; }
+      }
+      drag = { mode: 'pan', px: e.clientX, py: e.clientY, x, y };
+    };
+    cv.onpointermove = (e) => {
+      if (!drag) return;
+      const [px, py] = pos(e);
+      const cl = (v, a, b) => Math.max(a, Math.min(b, v));
+      if (drag.mode === 'pan') { x = drag.x + e.clientX - drag.px; y = drag.y + e.clientY - drag.py; }
+      else if (drag.mode === 'move') {
+        crop.x = cl(drag.crop.x + px - drag.px, 0, V - crop.w); crop.y = cl(drag.crop.y + py - drag.py, 0, V - crop.h);
+      } else {
+        const o = drag.crop, L = drag.ci % 2 === 0, T = drag.ci < 2;
+        let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+        if (L) x1 = cl(px, 0, x2 - 30); else x2 = cl(px, x1 + 30, V);
+        if (T) y1 = cl(py, 0, y2 - 30); else y2 = cl(py, y1 + 30, V);
+        crop = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+      }
+      draw();
+    };
     cv.onpointerup = cv.onpointercancel = () => { drag = null; };
     cv.onwheel = (e) => { e.preventDefault(); zoomTo(Math.min(kMax, Math.max(kMin, k * (e.deltaY < 0 ? 1.08 : 0.93)))); setSlider(); };
     draw();
     cropDlg.showModal();
     return new Promise((resolve) => {
-      cropDlg.querySelector('#cropAsIs').onclick = () => { cropDlg.close(); resolve(file); };
-      cropDlg.querySelector('#cropOk').onclick = () => {
-        const OUT = 640, f = OUT / V;
-        const out = document.createElement('canvas'); out.width = OUT; out.height = OUT;
-        out.getContext('2d').drawImage(img, x * f, y * f, img.width * k * f, img.height * k * f);
-        out.toBlob((b) => { cropDlg.close(); resolve(b || file); }, 'image/png');
+      q('#cropAsIs').onclick = () => { cropDlg.close(); resolve(src); };
+      q('#cropOk').onclick = () => {
+        const r = crop || { x: 0, y: 0, w: V, h: V };
+        const f = 640 / Math.max(r.w, r.h);
+        const out = document.createElement('canvas'); out.width = Math.round(r.w * f); out.height = Math.round(r.h * f);
+        out.getContext('2d').drawImage(img, (x - r.x) * f, (y - r.y) * f, img.width * k * f, img.height * k * f);
+        out.toBlob((b) => { cropDlg.close(); resolve(b || src); }, 'image/png');
       };
-      cropDlg.oncancel = () => resolve(file);
+      cropDlg.oncancel = () => resolve(src);
     });
   }
 
@@ -428,7 +505,7 @@
     return img ? `<img class="ico-img" src="${esc(img)}" alt="">` : glyph(c?.icon || fallback);
   }
   function faceHtml(shape, color, url, icon, cat = null) {
-    const style = url ? `background-image:url('${esc(url)}')` : `background:${esc(colorBg(color))}`;
+    const style = url ? `background:url('${esc(url)}') center / cover no-repeat, ${esc(colorBg(color))}` : `background:${esc(colorBg(color))}`;
     return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${cat ? icHtml(cat) : glyph(icon)}</span>`}</div>`;
   }
   // Couleur d'une sous-carte selon la famille de console ou la marque
