@@ -159,6 +159,7 @@
     'grad:#f7971e,#ffd200', 'grad:#8e2de2,#ff4081,#ffb800'];
   // Fond d'une carte : couleur unie (légèrement dégradée) ou mélange de couleurs
   function colorBg(c) {
+    if (c === 'transparent') return 'transparent';
     if (String(c).startsWith('grad:')) return `linear-gradient(135deg, ${c.slice(5)})`;
     if (VIVID_COLORS.includes(c)) return `linear-gradient(160deg, ${c} 45%, ${shade(c, 0.85)})`;
     return `linear-gradient(160deg, ${c}, ${shade(c)})`;
@@ -504,9 +505,12 @@
     const img = c?.id && groupImageUrl(c.id, ICON_IMG);
     return img ? `<img class="ico-img" src="${esc(img)}" alt="">` : glyph(c?.icon || fallback);
   }
+  const itemColor = (cat) => (cat?.id && catPrefs(cat.id).itemBg === 'transparent' ? 'transparent' : cat?.color || '#334155');
   function faceHtml(shape, color, url, icon, cat = null) {
-    const style = url ? `background:url('${esc(url)}') center / cover no-repeat, ${esc(colorBg(color))}` : `background:${esc(colorBg(color))}`;
-    return `<div class="face${url ? ' photo' : ''}" style="${style}">${url ? '' : `<span class="emoji">${cat ? icHtml(cat) : glyph(icon)}</span>`}</div>`;
+    // Fond transparent : l'image entière est montrée, sans couleur ni ombre autour
+    const clear = color === 'transparent';
+    const style = url ? `background:url('${esc(url)}') center / ${clear ? 'contain' : 'cover'} no-repeat, ${esc(colorBg(color))}` : `background:${esc(colorBg(color))}`;
+    return `<div class="face${url ? ' photo' : ''}${clear ? ' clear' : ''}" style="${style}">${url ? '' : `<span class="emoji">${cat ? icHtml(cat) : glyph(icon)}</span>`}</div>`;
   }
   // Couleur d'une sous-carte selon la famille de console ou la marque
   function groupColor(v) {
@@ -609,7 +613,7 @@
     const n = countOf(itemsUnder(c.id));
     const img = groupImageUrl(c.id, CARD_IMG);
     return `<a class="card shape-${esc(c.shape || 'classique')}${img ? ' has-img' : ''}" href="#/c/${c.id}" data-sel="c:${c.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="cat" data-id="${c.id}">✏️</span>
-      ${img ? `<div class="face" style="background:#fff url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon, c)}
+      ${img ? `<div class="face${c.color === 'transparent' ? ' clear' : ''}" style="background:${c.color === 'transparent' ? 'transparent' : '#fff'} url('${esc(img)}') center / contain no-repeat"></div>` : faceHtml(c.shape, c.color, null, c.icon, c)}
       <div class="label"><b>${esc(c.name)}</b><span>${plural(n, 'objet')}</span></div></a>`;
   }
 
@@ -621,7 +625,7 @@
     const worn = x.shirt_version === WORN;
     const shp = x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique';
     return `<a class="card shape-${esc(shp)}${worn ? ' worn' : ''}" href="#/i/${x.id}" data-sel="i:${x.id}"><span class="edit-pen" role="button" aria-label="Modifier" data-edit="item" data-id="${x.id}">✏️</span>
-      <div class="face-wrap">${faceHtml(shp, cat.color || '#334155', url, cat.icon || '📦', cat)}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
+      <div class="face-wrap">${faceHtml(shp, itemColor(cat), url, cat.icon || '📦', cat)}${qty(x) > 1 ? `<span class="qty">×${qty(x)}</span>` : ''}${worn ? '<span class="worn-badge">⭐ Porté</span>' : ''}</div>
       <div class="label"><b>${esc(x.name)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></a>`;
   }
 
@@ -1038,7 +1042,7 @@
       gp.push(groupOf(x, f));
     }
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
-      <div class="hero card shape-${esc(x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, cat.color || '#334155', url, cat.icon || '📦', cat.id ? cat : null)}</div>
+      <div class="hero card shape-${esc(x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, itemColor(cat), url, cat.icon || '📦', cat.id ? cat : null)}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
@@ -1375,11 +1379,14 @@
           <div class="card shape-${k}"><div class="face" style="background:${esc(colorBg(color))}"></div></div>${l}</button>`).join('')}</div>
         <label>Forme de ses références (objets)</label><p class="hint">Ex. : un sous-thème rond avec des références carrées.</p>
         <div id="itemShapeDef"></div>
+        <label>Fond de ses références</label>
+        <div class="chips" id="itemBgDef">${[['', '🎨 Couleur de la carte'], ['transparent', '◻️ Transparent']].map(([v, l]) => `<button type="button" data-ib="${v}" class="${(cat ? catPrefs(cat.id).itemBg || '' : '') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <p class="hint">« Transparent » montre la photo entière, sans couleur autour (idéal pour une image rognée ou détourée).</p>
         <label>Icône</label>
         <div class="stack">${imagePickerHtml('ic', '📷 Mon image comme icône (JPEG, PNG, SVG)', cat && groupImageUrl(cat.id, ICON_IMG))}</div>
         <p class="hint" id="icState">${cat && groupImageUrl(cat.id, ICON_IMG) ? 'Ton image est l’icône actuelle. Touche un emoji ou « Enlever l’image » pour revenir à un emoji.' : '…ou choisis un emoji :'}</p>${EMOJI_GROUPS.map(([t, list]) => `<div class="hint">${t}</div>
           <div class="emojis">${list.map((e) => `<button type="button" data-e="${e}" class="${e === icon ? 'on' : ''}">${glyph(e)}</button>`).join('')}</div>`).join('')}
-        <label>Couleur</label>${[['Classiques', COLORS], ['Vives', VIVID_COLORS], ['Mélanges', GRADIENTS]].map(([t, list]) => `<div class="hint">${t}</div>
+        <label>Couleur</label>${[['Sans fond', ['transparent']], ['Classiques', COLORS], ['Vives', VIVID_COLORS], ['Mélanges', GRADIENTS]].map(([t, list]) => `<div class="hint">${t}</div>
           <div class="colors">${list.map((c) => `<button type="button" data-c="${c}" style="background:${colorBg(c)}" class="${c === color ? 'on' : ''}"></button>`).join('')}</div>`).join('')}
         <label>Image de la carte (facultatif)</label>
         <p class="hint">Une photo, un logo… en JPEG, PNG ou SVG. Elle remplace l’icône et la couleur.</p>
@@ -1396,6 +1403,11 @@
     let itemShapeDef = cat ? catPrefs(cat.id).itemShape || '' : '';
     $('#itemShapeDef').innerHTML = shapePickerHtml(itemShapeDef, color, true);
     wireShapePicker($('#itemShapeDef'), (v) => (itemShapeDef = v));
+    let itemBgDef = cat ? catPrefs(cat.id).itemBg || '' : '';
+    modalBody.querySelectorAll('[data-ib]').forEach((b) => (b.onclick = () => {
+      itemBgDef = b.dataset.ib;
+      modalBody.querySelectorAll('[data-ib]').forEach((o) => o.classList.toggle('on', o === b));
+    }));
     let newIcon; // undefined = pas de changement, null = enlever
     pick('e', (v) => {
       icon = v;
@@ -1434,6 +1446,7 @@
         if (newImg !== undefined) await setGroupImage(data.id, CARD_IMG, newImg);
         if (newIcon !== undefined) await setGroupImage(data.id, ICON_IMG, newIcon);
         if (itemShapeDef !== (catPrefs(data.id).itemShape || '')) await savePrefs(data.id, { itemShape: itemShapeDef || null });
+        if (itemBgDef !== (catPrefs(data.id).itemBg || '')) await savePrefs(data.id, { itemBg: itemBgDef || null });
         closeModal();
         toast(cat ? 'Modifié' : parent ? 'Sous-thème créé' : 'Catégorie créée');
         cat ? route() : go(`#/c/${data.id}`);
