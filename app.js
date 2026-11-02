@@ -47,7 +47,7 @@
     'Neo Geo', 'Atari 2600', 'PC'];
   const BRANDS = {
     jeux: ['Nintendo', 'Sony', 'Microsoft', 'Sega', 'Atari', 'SNK', 'Ubisoft', 'Electronic Arts', 'Activision', 'Square Enix', 'Capcom', 'Konami', 'Bandai Namco', 'Rockstar', 'Bethesda'],
-    jouets: ['Playmobil', 'Lego', 'Mattel', 'Hasbro', 'Kenner', 'Bandai', 'Hot Wheels', 'Majorette', 'Corolle', 'Smoby', 'VTech', 'Ravensburger', 'Asmodee', 'Dujardin', 'Panini'],
+    jouets: ['Playmobil', 'Lego', 'Mattel', 'Hasbro', 'Kenner', 'Bandai', 'Hot Wheels', 'Majorette', 'Corolle', 'Smoby', 'VTech', 'Ravensburger', 'Asmodee', 'Dujardin', 'Panini', 'Funko'],
     voitures: ['Ferrari', 'Lamborghini', 'Porsche', 'Bugatti', 'McLaren', 'Aston Martin', 'Mercedes', 'BMW', 'Audi', 'Volkswagen', 'Peugeot', 'Renault', 'Citroën', 'Alpine', 'Ford', 'Chevrolet', 'Dodge', 'Jaguar', 'Mini', 'Fiat',
       'Burago', 'Maisto', 'Solido', 'Norev', 'Majorette', 'Hot Wheels', 'Minichamps', 'Kyosho', 'AutoArt'],
     musique: ['Universal', 'Sony Music', 'Warner', 'EMI', 'Columbia', 'Polydor', 'Virgin', 'Atlantic', 'Disney', 'Warner Bros', 'Gaumont', 'Pathé', 'Fox', 'Paramount'],
@@ -1151,6 +1151,7 @@
         <div class="row">
           ${showPlatform ? `<div><label>Console</label>${selectOther('platform', withUsed(PLATFORMS, 'platform'), platform, 'Nom de la console')}</div>` : ''}
           <div><label>Marque</label>${selectOther('brand', withUsed(brandsFor(kind), 'brand'), brand, 'Nom de la marque')}</div>
+          ${!showShirt && !showPlatform ? `<div style="flex:0 0 34%"><label>Numéro</label><input name="shirt_number" inputmode="numeric" value="${esc(number || '')}" placeholder="Ex. : 57"></div>` : ''}
         </div>`;
       wireOther($('#dyn'));
       const tt = $('#dyn [name=team_type]');
@@ -1204,7 +1205,8 @@
         name: fd.name.trim(), category_id: fd.category_id,
         platform: otherValue(fd, 'platform'), brand: otherValue(fd, 'brand'),
         ...('team_type' in fd ? { team_type: fd.team_type || null, team: otherValue(fd, 'team') } : {}),
-        ...('player_name' in fd ? { player_name: otherValue(fd, 'player_name'), shirt_number: otherValue(fd, 'shirt_number'), shirt_version: fd.shirt_version || null } : {}),
+        ...('player_name' in fd ? { player_name: otherValue(fd, 'player_name'), shirt_number: otherValue(fd, 'shirt_number'), shirt_version: fd.shirt_version || null }
+          : 'shirt_number' in fd ? { shirt_number: fd.shirt_number.trim() || null } : {}),
         year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: otherValue(fd, 'owner'), quantity: Math.max(1, parseInt(fd.quantity, 10) || 1),
         condition: fd.condition || null, purchase_price: numOrNull(fd.purchase_price),
         location: otherValue(fd, 'location'), acquired_on: fd.acquired_on || null, notes: fd.notes.trim() || null, updated_at: new Date().toISOString(),
