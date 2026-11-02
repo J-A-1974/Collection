@@ -459,7 +459,8 @@
   ];
   const GROUP_SORTS = [['defaut', 'Ordre actuel'], ['az', 'A → Z'], ['za', 'Z → A'], ['plus', 'Plus d’objets d’abord'], ['moins', 'Moins d’objets d’abord']];
   const ITEM_SORTS = [['recent', 'Ajoutés récemment'], ['ancien', 'Ajoutés en premier'], ['az', 'Nom A → Z'], ['za', 'Nom Z → A'],
-    ['prix_asc', 'Tarif croissant'], ['prix_desc', 'Tarif décroissant'], ['annee_asc', 'Année croissante'], ['annee_desc', 'Année décroissante']];
+    ['prix_asc', 'Tarif croissant'], ['prix_desc', 'Tarif décroissant'], ['annee_asc', 'Année croissante'], ['annee_desc', 'Année décroissante'],
+    ['num_asc', 'Numéro croissant'], ['num_desc', 'Numéro décroissant']];
   const HOME_SORTS = [['manuel', 'Ordre actuel'], ['az', 'A → Z'], ['za', 'Z → A'], ['plus', 'Plus d’objets d’abord'], ['moins', 'Moins d’objets d’abord']];
   const PRICE_RANGES = ['Moins de 10 €', '10 à 50 €', '50 à 100 €', '100 à 500 €', 'Plus de 500 €'];
   const cmpText = (a, b) => String(a).localeCompare(String(b), 'fr', { numeric: true, sensitivity: 'base' });
@@ -475,6 +476,9 @@
       prix_desc: (a, b) => num(b.estimated_value, -Infinity) - num(a.estimated_value, -Infinity),
       annee_asc: (a, b) => num(a.year, Infinity) - num(b.year, Infinity),
       annee_desc: (a, b) => num(b.year, -Infinity) - num(a.year, -Infinity),
+      // Numéros (Pop, maillots…) : 2 avant 10, les objets sans numéro à la fin
+      num_asc: (a, b) => (!a.shirt_number) - (!b.shirt_number) || cmpText(a.shirt_number || '', b.shirt_number || ''),
+      num_desc: (a, b) => (!a.shirt_number) - (!b.shirt_number) || cmpText(b.shirt_number || '', a.shirt_number || ''),
     }[how];
     return by ? l.sort(by) : l;
   }
