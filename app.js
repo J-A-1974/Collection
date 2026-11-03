@@ -240,15 +240,15 @@
   // Détourage : enlève le fond (bibliothèque chargée seulement quand on s'en sert)
   let bgLib = null;
   async function removeBg(blob, onProgress) {
-    if (!bgLib) {
-      try { bgLib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.8/+esm'); }
-      catch { bgLib = await import('https://esm.sh/@imgly/background-removal@1.5.8'); }
-    }
-    const fn = bgLib.removeBackground || bgLib.default;
-    return fn(blob, {
-      model: 'isnet_quint8', output: { format: 'image/png' },
+    // Bibliothèque @imgly/background-removal 1.4.5 (licence AGPL) copiée dans vendor/ ; le modèle vient de leur serveur
+    if (!bgLib) bgLib = await import('./vendor/background-removal-1.4.5.js');
+    const run = (publicPath) => bgLib.removeBackground(blob, {
+      model: 'small', output: { format: 'image/png' },
+      ...(publicPath ? { publicPath } : {}),
       progress: (key, cur, tot) => onProgress && tot && onProgress(Math.round((cur / tot) * 100), key),
     });
+    try { return await run(window.BGR_PUBLIC_PATH); }
+    catch (e) { console.warn(e); return run('https://unpkg.com/@imgly/background-removal-data@1.4.5/dist/'); }
   }
   const loadBitmap = async (b) => {
     try { return await createImageBitmap(b, { imageOrientation: 'from-image' }); }
@@ -304,7 +304,7 @@
     q('#cropBg').onclick = async () => {
       const b = q('#cropBg'), msg = q('#cropMsg');
       b.disabled = true; msg.hidden = false;
-      msg.textContent = '🪄 Détourage en cours… La 1re fois, le téléphone télécharge l’outil (environ 40 Mo), ça peut prendre une minute.';
+      msg.textContent = '🪄 Détourage en cours… La 1re fois, l’appareil télécharge l’outil (environ 55 Mo), ça peut prendre une minute.';
       try {
         const out = await removeBg(src, (pc) => { msg.textContent = `🪄 Préparation de l’outil… ${pc} %`; });
         msg.textContent = '🪄 Presque fini…';
@@ -1043,7 +1043,7 @@
     }
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
       <div class="hero card shape-${esc(x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, itemColor(cat), url, cat.icon || '📦', cat.id ? cat : null)}</div>
-      ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir</p>' : ''}
+      ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir. Reste appuyé dessus (ou clic droit) pour la détourer.</p>' : ''}
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
       <div class="fields">
@@ -1069,7 +1069,10 @@
         <button class="btn primary" id="edit">Modifier</button>
         <button class="btn danger" id="del">Supprimer</button>
       </div></div>`;
-    if (url) $('#hero').onclick = () => showPhoto(url, x.name);
+    if (url) {
+      $('#hero').onclick = () => showPhoto(url, x.name, x);
+      onLongPress($('#hero'), () => photoActions(url, x.name, x));
+    }
     $('#edit').onclick = () => itemForm(x);
     $('#del').onclick = async () => {
       if (!confirm(`Supprimer « ${x.name} » ? C’est définitif.`)) return;
@@ -1082,16 +1085,79 @@
   }
 
   // Photo en plein écran : appui long sur l'image = menu du téléphone (télécharger), ou bouton Télécharger
-  function showPhoto(url, name) {
+  // Appui long (doigt) ou clic maintenu / clic droit (souris) sur une image
+  function onLongPress(el, fn) {
+    let t = null;
+    const cancel = () => { clearTimeout(t); t = null; };
+    el.addEventListener('pointerdown', (e) => { if (e.button > 0) return; cancel(); t = setTimeout(() => { t = null; el.dataset.lp = '1'; fn(); }, 550); });
+    ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach((ev) => el.addEventListener(ev, (e) => { if (ev !== 'pointermove' || Math.abs(e.movementX) + Math.abs(e.movementY) > 6) cancel(); }));
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel(); fn(); });
+    // évite que le clic qui suit l'appui long ouvre aussi la photo
+    el.addEventListener('click', (e) => { if (el.dataset.lp) { delete el.dataset.lp; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  }
+  function downloadBlob(blob, name, ext) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(name || 'photo').replace(/[^\p{L}\p{N} _-]+/gu, '').trim() || 'photo'}.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  function photoActions(url, name, item = null) {
+    openModal(`<h3>🖼️ ${esc(name)}</h3><div class="stack">
+      <button class="btn primary" id="paDetour">🪄 Détourer l’objet (enlever le fond)</button>
+      <button class="btn" id="paDl">⬇️ Enregistrer l’image</button>
+      <button class="btn" id="paBig">🔍 Voir en grand</button>
+      <button class="btn" id="cancel">Fermer</button></div>`);
+    $('#cancel').onclick = closeModal;
+    $('#paBig').onclick = () => { closeModal(); showPhoto(url, name, item); };
+    $('#paDl').onclick = async () => { try { const b = await (await fetch(url)).blob(); downloadBlob(b, name, b.type.includes('png') ? 'png' : b.type.includes('jpeg') ? 'jpg' : 'webp'); toast('Image enregistrée'); } catch (e) { fail(e); } };
+    $('#paDetour').onclick = () => detourPhoto(url, name, item);
+  }
+  async function detourPhoto(url, name, item = null) {
+    openModal(`<h3>🪄 Détourage</h3><p class="hint" id="dtMsg">Détourage en cours… La 1re fois, l’appareil télécharge l’outil (environ 55 Mo), ça peut prendre une minute.</p>`);
+    try {
+      const src = await fetchImage(url);
+      const out = await removeBg(src, (pc) => { const m = $('#dtMsg'); if (m) m.textContent = `Préparation de l’outil… ${pc} %`; });
+      const view = URL.createObjectURL(out);
+      openModal(`<h3>🪄 Objet détouré</h3>
+        <div class="detour-view"><img src="${view}" alt=""></div>
+        <div class="stack">
+          <button class="btn primary" id="dtDl">⬇️ Enregistrer comme image (PNG transparent)</button>
+          ${item && !readMode ? '<button class="btn" id="dtUse">📌 Utiliser comme photo de cette référence</button>' : ''}
+          <button class="btn" id="cancel">Fermer</button></div>`);
+      $('#cancel').onclick = closeModal;
+      $('#dtDl').onclick = () => { downloadBlob(out, `${name || 'objet'} détouré`, 'png'); toast('Image enregistrée'); };
+      $('#dtUse')?.addEventListener('click', async () => {
+        try {
+          const small = await compressImage(out, { keepAlpha: true });
+          const path = await uploadFile(small);
+          const { data, error } = await sb.from('collection_items').update({ photo_path: path, updated_at: new Date().toISOString() }).eq('id', item.id).select().single();
+          if (error) throw error;
+          if (item.photo_path) removeFiles([item.photo_path]);
+          await signedUrls([path]);
+          items = items.map((i) => (i.id === item.id ? data : i));
+          closeModal(); toast('Photo remplacée ✅'); route();
+        } catch (e) { fail(e); }
+      });
+    } catch (e) {
+      console.error(e);
+      openModal(`<h3>😕 Détourage impossible</h3><p class="hint">L’outil n’a pas pu se charger sur cet appareil. Astuce : sur le téléphone, reste appuyé sur l’objet dans la photo (Galerie ou Photos), enregistre l’objet détouré, puis importe-le dans l’appli.</p>
+        <div class="actions"><button class="btn" id="cancel">Fermer</button></div>`);
+      $('#cancel').onclick = closeModal;
+    }
+  }
+  function showPhoto(url, name, item = null) {
     const box = document.createElement('div');
     box.className = 'lightbox';
     box.innerHTML = `<img src="${esc(url)}" alt="${esc(name)}">
-      <div class="lb-bar"><button class="btn" id="lbDl">⬇️ Télécharger</button><button class="btn" id="lbClose">✕ Fermer</button></div>`;
+      <div class="lb-bar"><button class="btn" id="lbDl">⬇️ Télécharger</button><button class="btn" id="lbCut">🪄 Détourer</button><button class="btn" id="lbClose">✕ Fermer</button></div>`;
     document.body.appendChild(box);
     const close = () => { box.remove(); window.removeEventListener('popstate', close); };
     history.pushState({ photo: 1 }, '');
     window.addEventListener('popstate', close);
     box.querySelector('#lbClose').onclick = () => history.back();
+    box.querySelector('#lbCut').onclick = () => { history.back(); setTimeout(() => detourPhoto(url, name, item), 50); };
+    onLongPress(box.querySelector('img'), () => { history.back(); setTimeout(() => photoActions(url, name, item), 50); });
     box.onclick = (e) => { if (e.target === box) history.back(); };
     box.querySelector('#lbDl').onclick = async () => {
       try {
@@ -1371,7 +1437,7 @@
   function categoryForm(cat = null, parentId = null) {
     let icon = cat?.icon || '📦', color = cat?.color || COLORS[0], shape = cat?.shape || 'classique';
     const parent = parentId && categories.find((c) => c.id === parentId);
-    openModal(`<h3>${cat ? 'Modifier' : parent ? `Nouveau sous-thème dans « ${esc(parent.name)} »` : 'Nouvelle catégorie'}</h3>
+    openModal(`<h3>${cat ? `Modifier « ${esc(cat.name)} »` : parent ? `Nouveau sous-thème dans « ${esc(parent.name)} »` : 'Nouvelle catégorie'}</h3>
       <form id="f">
         <label>Nom *</label><input name="name" required value="${esc(cat?.name)}" placeholder="Ex. : Figurines">
         <label>Forme de cette carte</label><p class="hint">Elle ne change que cette carte. Ses sous-thèmes, sous-cartes et références peuvent avoir leur propre forme.</p>
