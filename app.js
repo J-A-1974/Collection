@@ -94,6 +94,13 @@
     'Real Madrid', 'FC Barcelone', 'Atlético Madrid', 'Manchester United', 'Manchester City', 'Liverpool', 'Arsenal', 'Chelsea', 'Juventus', 'AC Milan', 'Inter Milan',
     'Bayern Munich', 'Borussia Dortmund', 'Ajax', 'Boca Juniors', 'Flamengo'];
   const TEAM_TYPES = ['Équipe nationale', 'Club', 'Autre'];
+  // Sous-cartes « type » d'une carte (maillots, ballons) : José peut les renommer et en ajouter (ex. Coupe du Monde)
+  const teamTypesFor = (cat) => {
+    const own = cat?.id && catPrefs(cat.id).types;
+    if (own) return own;
+    const parent = cat?.parent_id && categories.find((c) => c.id === cat.parent_id);
+    return parent ? teamTypesFor(parent) : TEAM_TYPES;
+  };
   // Maillots : flocage (joueur + numéro) et version
   const PLAYERS = ['Mbappé', 'Zidane', 'Griezmann', 'Benzema', 'Henry', 'Platini', 'Giroud', 'Pogba', 'Dembélé', 'Kanté', 'Ribéry', 'Cantona', 'Papin', 'Deschamps',
     'Thuram', 'Barthez', 'Lloris', 'Pires', 'Trezeguet', 'Vieira', 'Makelele', 'Desailly', 'Lizarazu', 'Hernandez', 'Camavinga', 'Tchouaméni', 'Saliba', 'Olise', 'Doué',
@@ -908,7 +915,7 @@
     const used = field ? [...new Set(all.map((x) => groupOf(x, field)))].filter((g) => g !== NONE) : [];
     // Sous-cartes proposées d'office (PS1…, Équipe nationale…), sauf celles que José a supprimées (si vides)
     const hiddenGroups = cp.hidden || [];
-    const preset = (field === 'platform' ? FEATURED_PLATFORMS : field === 'team_type' ? TEAM_TYPES : [])
+    const preset = (field === 'platform' ? FEATURED_PLATFORMS : field === 'team_type' ? teamTypesFor(cat) : [])
       .filter((g) => !hiddenGroups.includes([...path, g].join('/')) || all.some((x) => groupOf(x, field) === g));
     const extra = used.filter((v) => !preset.includes(v));
     extra.sort(field === 'price' ? (a, b) => PRICE_RANGES.indexOf(a) - PRICE_RANGES.indexOf(b) : cmpText);
@@ -1277,7 +1284,7 @@
       const prev = $('#dyn').innerHTML ? Object.fromEntries(new FormData($('#f'))) : null;
       const platform = prev ? otherValue(prev, 'platform') : (x ? x.platform : prefill.platform);
       const brand = prev ? otherValue(prev, 'brand') : (x ? x.brand : prefill.brand);
-      const teamType = prev ? prev.team_type : (x ? x.team_type : prefill.team_type);
+      const teamType = prev ? otherValue(prev, 'team_type') : (x ? x.team_type : prefill.team_type);
       const team = prev ? otherValue(prev, 'team') : (x ? x.team : prefill.team);
       const showPlatform = kind === 'jeux' || kind === 'consoles' || platform;
       const showTeam = kind === 'sport' || teamType || team;
@@ -1289,7 +1296,7 @@
       const players = [...new Set(PLAYERS)].sort((a, b) => a.localeCompare(b, 'fr'));
       $('#dyn').innerHTML = `
         ${showTeam ? `<div class="row">
-          <div><label>Type</label><select name="team_type"><option value="">Choisir…</option>${TEAM_TYPES.map((t) => `<option ${t === teamType ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+          <div><label>Type</label>${selectOther('team_type', withUsed(teamTypesFor(cat), 'team_type'), teamType, 'Ex. : Coupe du Monde')}</div>
           <div><label>${teamType === 'Club' ? 'Club' : teamType === 'Équipe nationale' ? 'Pays' : 'Pays ou club'}</label>${selectOther('team', withUsed(teams, 'team'), team, 'Nom de l’équipe')}</div>
         </div>` : ''}
         ${showShirt ? `<label>Version du maillot</label>
@@ -1306,7 +1313,7 @@
         </div>`;
       wireOther($('#dyn'));
       const tt = $('#dyn [name=team_type]');
-      if (tt) tt.onchange = drawDyn;
+      if (tt) { const showOther = tt.onchange; tt.onchange = () => { if (tt.value === '__autre') showOther(); else drawDyn(); }; }
     };
     drawDyn();
     // Choix de la catégorie dans un arbre repliable
@@ -1355,7 +1362,7 @@
       const row = {
         name: fd.name.trim(), category_id: fd.category_id,
         platform: otherValue(fd, 'platform'), brand: otherValue(fd, 'brand'),
-        ...('team_type' in fd ? { team_type: fd.team_type || null, team: otherValue(fd, 'team') } : {}),
+        ...('team_type' in fd ? { team_type: otherValue(fd, 'team_type'), team: otherValue(fd, 'team') } : {}),
         ...('player_name' in fd ? { player_name: otherValue(fd, 'player_name'), shirt_number: otherValue(fd, 'shirt_number'), shirt_version: fd.shirt_version || null }
           : 'shirt_number' in fd ? { shirt_number: fd.shirt_number.trim() || null } : {}),
         year: numOrNull(fd.year), estimated_value: numOrNull(fd.estimated_value), owner: otherValue(fd, 'owner'), quantity: Math.max(1, parseInt(fd.quantity, 10) || 1),
@@ -1537,6 +1544,7 @@
         ${group && groupField && RENAMABLE.includes(groupField) && path[path.length - 1] !== NONE ? `<button class="btn" id="renGroup">✏️ Renommer « ${esc(groupName)} »</button>` : ''}
         <button class="btn" id="editCat">✏️ Modifier « ${esc(cat.name)} » : nom, forme, icône, couleur</button>
         <button class="btn" id="addSubM">➕ Ajouter un sous-thème</button>
+        ${!group && groupChain(cat)[0] === 'team_type' ? '<button class="btn" id="addType">➕ Nouvelle sous-carte (ex. Coupe du Monde)</button>' : ''}
         ${!group && (catPrefs(cat.id).hidden || []).length ? `<button class="btn" id="unhide">↩️ Remettre les ${plural(catPrefs(cat.id).hidden.length, 'sous-carte')} supprimée(s)</button>` : ''}
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
         ${group ? `<button class="btn danger" id="delGroup">🗑️ Supprimer la sous-carte « ${esc(groupName)} » et ses ${plural(groupItems.length, 'objet')}</button>` : ''}
@@ -1545,6 +1553,14 @@
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    $('#addType')?.addEventListener('click', async () => {
+      const v = (prompt('Nom de la nouvelle sous-carte :', '') || '').trim();
+      if (!v) return;
+      const types = teamTypesFor(cat);
+      if (types.includes(v)) return toast('Elle existe déjà');
+      await savePrefs(cat.id, { types: [...types, v], hidden: (catPrefs(cat.id).hidden || []).filter((h) => h !== v) });
+      closeModal(); toast('Sous-carte créée ✅'); route();
+    });
     if (group) wireShapePicker(modalBody, async (v) => {
       const shapes = { ...(catPrefs(cat.id).shapes || {}) };
       if (v) shapes[group] = v; else delete shapes[group];
@@ -1573,6 +1589,11 @@
       const list = items.filter((x) => ids.has(x.category_id) && String(x[groupField] ?? '') === old);
       const val = groupField === 'year' ? numOrNull(v) : v;
       try {
+        if (groupField === 'team_type') {
+          const types = teamTypesFor(cat).map((t) => (t === old ? v : t));
+          if (!types.includes(v)) types.push(v);
+          await savePrefs(cat.id, { types });
+        }
         for (const x of list) {
           const { error } = await sb.from('collection_items').update({ [groupField]: val }).eq('id', x.id);
           if (error) throw error;
