@@ -1051,6 +1051,7 @@
     app.innerHTML = `${cat.id ? `<p class="page-title crumbs-small">${crumbsHtml(cat, gp, gp.map((g, i) => groupLabel(g, chain[i])), true)}</p>` : ''}<div class="detail">
       <div class="hero card shape-${esc(x.shape || (cat.id && catPrefs(cat.id).itemShape) || cat.shape || 'classique')}${url ? ' zoomable' : ''}" id="hero">${faceHtml(cat.shape, itemColor(cat), url, cat.icon || '📦', cat.id ? cat : null)}</div>
       ${url ? '<p class="hint" style="text-align:center">Touche la photo pour l’agrandir. Reste appuyé dessus (ou clic droit) pour la détourer.</p>' : ''}
+      ${x.photo_path ? '<button class="btn dl-photo" id="dlOne">⬇️ Télécharger la photo</button>' : ''}
       ${x.shirt_version === WORN ? '<div class="worn-banner">⭐ Maillot porté par un joueur ⭐</div>' : ''}
       <h2>${esc(x.name)}</h2>
       <div class="fields">
@@ -1080,6 +1081,7 @@
       $('#hero').onclick = () => showPhoto(url, x.name, x);
       onLongPress($('#hero'), () => photoActions(url, x.name, x));
     }
+    $('#dlOne')?.addEventListener('click', () => downloadOne(x));
     $('#edit').onclick = () => itemForm(x);
     $('#del').onclick = async () => {
       if (!confirm(`Supprimer « ${x.name} » ? C’est définitif.`)) return;
@@ -1178,6 +1180,131 @@
         toast('Photo téléchargée');
       } catch (e) { fail(e); }
     };
+  }
+
+  // ---------- Télécharger les photos (une, un thème, ou tout) ----------
+  // Petit fichier ZIP fait maison : les photos sont déjà compressées, on les range telles quelles.
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(buf) { let c = 0xffffffff; for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+  function makeZip(files) {
+    const enc = new TextEncoder();
+    const parts = []; const central = []; let offset = 0;
+    const d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    for (const f of files) {
+      const name = enc.encode(f.name); const data = f.data; const crc = crc32(data);
+      const head = new DataView(new ArrayBuffer(30));
+      head.setUint32(0, 0x04034b50, true); head.setUint16(4, 20, true); head.setUint16(6, 0x0800, true);
+      head.setUint16(10, time, true); head.setUint16(12, date, true); head.setUint32(14, crc, true);
+      head.setUint32(18, data.length, true); head.setUint32(22, data.length, true); head.setUint16(26, name.length, true);
+      parts.push(head, name, data);
+      const cen = new DataView(new ArrayBuffer(46));
+      cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true);
+      cen.setUint16(12, time, true); cen.setUint16(14, date, true); cen.setUint32(16, crc, true);
+      cen.setUint32(20, data.length, true); cen.setUint32(24, data.length, true); cen.setUint16(28, name.length, true);
+      cen.setUint32(42, offset, true);
+      central.push(cen, name);
+      offset += 30 + name.length + data.length;
+    }
+    const size = central.reduce((s, p) => s + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, size, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end], { type: 'application/zip' });
+  }
+  const safeName = (s, def = 'photo') => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || def;
+  const extOf = (path, type = '') => (/\.(\w+)$/.exec(path || '') || [])[1] || (type.includes('png') ? 'png' : type.includes('jpeg') ? 'jpg' : type.includes('svg') ? 'svg' : 'webp');
+  async function fetchStored(path) {
+    const { data, error } = await sb.storage.from('collection-photos').download(path);
+    if (error) throw error;
+    return data;
+  }
+  // Une photo seule, nommée d'après l'objet
+  async function downloadOne(x) {
+    try {
+      const b = await fetchStored(x.photo_path);
+      downloadBlob(b, x.name, extOf(x.photo_path, b.type));
+      toast('Photo téléchargée ✅');
+    } catch (e) { fail(e); }
+  }
+  // Le nom du dossier d'un objet : ses thèmes et sous-thèmes, à partir de « base »
+  function folderOf(x, baseId) {
+    const cat = categories.find((c) => c.id === x.category_id);
+    if (!cat) return 'Sans catégorie';
+    let chain = ancestors(cat);
+    if (baseId) { const k = chain.findIndex((c) => c.id === baseId); if (k >= 0) chain = chain.slice(k + 1); }
+    return chain.map((c) => safeName(c.name, 'Thème')).join('/');
+  }
+  // Plusieurs photos dans un fichier ZIP, rangées par thème, nommées d'après les objets
+  async function downloadZip(list, zipName, { baseId = null, extras = [] } = {}) {
+    const jobs = [];
+    const used = new Set();
+    const add = (folder, name, path) => {
+      const ext = extOf(path);
+      let file = `${folder ? folder + '/' : ''}${safeName(name)}`;
+      let n = 1; let out = `${file}.${ext}`;
+      while (used.has(out.toLowerCase())) out = `${file} (${++n}).${ext}`;
+      used.add(out.toLowerCase());
+      jobs.push({ name: out, path });
+    };
+    list.filter((x) => x.photo_path).forEach((x) => add(folderOf(x, baseId), x.name, x.photo_path));
+    extras.forEach((e) => add(e.folder, e.name, e.path));
+    if (!jobs.length) return toast('Aucune photo à télécharger ici');
+    openModal(`<h3>⬇️ Téléchargement</h3><p class="hint" id="zipMsg">Préparation des photos… 0 / ${jobs.length}</p>
+      <div class="actions"><button class="btn" id="zipStop">Annuler</button></div>`);
+    let stop = false;
+    $('#zipStop').onclick = () => { stop = true; closeModal(); };
+    const files = []; let done = 0; let missed = 0; let next = 0;
+    const worker = async () => {
+      while (!stop && next < jobs.length) {
+        const j = jobs[next++];
+        try { files.push({ name: j.name, data: new Uint8Array(await (await fetchStored(j.path)).arrayBuffer()) }); }
+        catch (e) { console.error(e); missed++; }
+        done++;
+        const m = $('#zipMsg'); if (m) m.textContent = `Préparation des photos… ${done} / ${jobs.length}`;
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    if (stop) return;
+    if (!files.length) { closeModal(); return toast('Les photos n’ont pas pu être récupérées. Vérifie la connexion.', 4000); }
+    files.sort((a, b) => cmpText(a.name, b.name));
+    const zip = makeZip(files);
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    downloadBlob(zip, `${safeName(zipName, 'Photos')} ${stamp}`, 'zip');
+    const mo = (zip.size / 1048576).toFixed(1).replace('.', ',');
+    openModal(`<h3>✅ C’est prêt</h3><p class="hint">${plural(files.length, 'photo')} dans un fichier ZIP (${mo} Mo), rangées par thème.${missed ? ` ${plural(missed, 'photo')} n’a pas pu être récupérée.` : ''}</p>
+      <p class="hint">Tu le trouves dans « Téléchargements » du téléphone. Touche-le pour l’ouvrir et voir les photos.</p>
+      <div class="actions"><button class="btn primary" id="cancel">OK</button></div>`);
+    $('#cancel').onclick = closeModal;
+  }
+  // Tout : photos des objets + images des cartes, du fond et du logo
+  function downloadAll() {
+    const extras = [];
+    const catName = (id) => { const c = categories.find((k) => k.id === id); return c ? pathName(c).replace(/ › /g, ' - ') : 'Carte'; };
+    for (const [key, v] of Object.entries(groupImages())) {
+      if (!v.path) continue;
+      const [catId, g] = key.split('|');
+      extras.push({ folder: 'Images des cartes', name: g === CARD_IMG ? catName(catId) : `${catName(catId)} - ${g === NONE ? 'Autres' : g.replace(/\//g, ' - ')}`, path: v.path });
+    }
+    if (settings.bg_path) extras.push({ folder: 'Images des cartes', name: 'Fond d’écran', path: settings.bg_path });
+    if (settings.logo_path) extras.push({ folder: 'Images des cartes', name: 'Logo', path: settings.logo_path });
+    return downloadZip(items, 'Ma collection - toutes les photos', { extras });
+  }
+  // Choix proposé dans le menu
+  function downloadMenu() {
+    const n = items.filter((x) => x.photo_path).length;
+    openModal(`<h3>⬇️ Télécharger mes photos</h3>
+      <p class="hint">Pour garder une copie de tes photos sur le téléphone ou l’ordinateur.</p>
+      <div class="stack">
+        <button class="btn primary" id="dlAll">📦 Toutes les photos de l’appli (${plural(n, 'photo')})</button>
+        <p class="hint">Un fichier ZIP, rangé en dossiers par thème. Chaque photo porte le nom de l’objet.</p>
+        <p class="hint">📁 Pour un seul thème : ouvre la carte, puis ⋯ → « Télécharger les photos ».<br>🖼️ Pour une seule photo : ouvre l’objet, puis « Télécharger la photo ».</p>
+        <button class="btn" id="cancel">Fermer</button>
+      </div>`);
+    $('#cancel').onclick = closeModal;
+    $('#dlAll').onclick = downloadAll;
   }
 
   // Liste des cartes en arbre repliable : ▸ pour voir les sous-thèmes
@@ -1536,6 +1663,7 @@
     const gChain = groupChain(cat);
     const groupItems = group ? items.filter((x) => x.category_id === cat.id && path.every((g, i) => groupOf(x, gChain[i]) === g)) : [];
     const hasImg = groupImageUrl(cat.id, imgKey);
+    const dlList = (group ? groupItems : itemsUnder(cat.id)).filter((x) => x.photo_path);
     openModal(`<h3>${icHtml(cat)} ${esc(cat.name)}${group ? ` › ${esc(groupName)}` : ''}</h3>
       <div class="stack">
         ${imagePickerHtml('g', `Image de la carte « ${esc(group ? groupName : cat.name)} » (JPEG, PNG, SVG)`, hasImg)}
@@ -1547,12 +1675,14 @@
         ${!group && groupChain(cat)[0] === 'team_type' ? '<button class="btn" id="addType">➕ Nouvelle sous-carte (ex. Coupe du Monde)</button>' : ''}
         ${!group && (catPrefs(cat.id).hidden || []).length ? `<button class="btn" id="unhide">↩️ Remettre les ${plural(catPrefs(cat.id).hidden.length, 'sous-carte')} supprimée(s)</button>` : ''}
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
+        <button class="btn" id="dlCat">⬇️ Télécharger les photos de « ${esc(group ? groupName : cat.name)} » (${plural(dlList.length, 'photo')})</button>
         ${group ? `<button class="btn danger" id="delGroup">🗑️ Supprimer la sous-carte « ${esc(groupName)} » et ses ${plural(groupItems.length, 'objet')}</button>` : ''}
         <button class="btn danger" id="delCat">🗑️ Supprimer ${cat.parent_id ? 'le sous-thème' : 'la carte'} « ${esc(cat.name)} »${nSub ? ` et ses ${plural(nSub, 'sous-thème')}` : ''}${n ? ` (${plural(n, 'objet')})` : ''}</button>
         <button class="btn" id="cancel">Fermer</button>
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#editCat').onclick = () => categoryForm(cat);
+    $('#dlCat').onclick = () => downloadZip(dlList, group ? `${cat.name} - ${groupName}` : cat.name, { baseId: cat.id });
     $('#addType')?.addEventListener('click', async () => {
       const v = (prompt('Nom de la nouvelle sous-carte :', '') || '').trim();
       if (!v) return;
@@ -1662,6 +1792,7 @@
         <button class="btn primary" id="readOn">👀 Mode lecture (pour montrer ma collection)</button>
         <button class="btn" id="readCode">🔢 Code du mode lecture : ${'•'.repeat(readCode().length)}</button>
         <button class="btn" id="look">🎨 Apparence : fond, cartes, logo</button>
+        <button class="btn" id="dlMenu">⬇️ Télécharger mes photos</button>
         <button class="btn" id="newCat">➕ Nouvelle catégorie</button>
         <p class="hint">Connecté : ${esc(user.email)}</p>
         <button class="btn danger" id="logout">Se déconnecter</button>
@@ -1669,6 +1800,7 @@
       </div>`);
     $('#cancel').onclick = closeModal;
     $('#look').onclick = lookMenu;
+    $('#dlMenu').onclick = downloadMenu;
     $('#newCat').onclick = () => categoryForm();
     $('#readOn').onclick = () => {
       if (confirm(`Passer en mode lecture ? Pour en sortir, il faudra taper le code (${readCode()}).`)) setReadMode(true);
